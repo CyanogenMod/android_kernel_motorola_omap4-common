@@ -243,6 +243,19 @@ struct mgmt_cp_encrypt_link {
 	__u8 enable;
 } __packed;
 
+#define MGMT_OP_SET_RSSI_REPORTER		0x0022
+struct mgmt_cp_set_rssi_reporter {
+	bdaddr_t	bdaddr;
+	__s8		rssi_threshold;
+	__le16	interval;
+	__u8		updateOnThreshExceed;
+} __packed;
+
+#define MGMT_OP_UNSET_RSSI_REPORTER		0x0023
+struct mgmt_cp_unset_rssi_reporter {
+	bdaddr_t	bdaddr;
+} __packed;
+
 #define MGMT_EV_CMD_COMPLETE		0x0001
 struct mgmt_ev_cmd_complete {
 	__le16 opcode;
@@ -377,4 +390,10 @@ struct mgmt_ev_le_conn_params {
 	__u16 interval;
 	__u16 latency;
 	__u16 timeout;
+} __packed;
+
+#define MGMT_EV_RSSI_UPDATE		0x0020
+struct mgmt_ev_rssi_update {
+	bdaddr_t	bdaddr;
+	__s8			rssi;
 } __packed;

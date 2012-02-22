@@ -1492,9 +1492,8 @@ static void _dispc_set_scaling_common(enum omap_plane plane,
 	int accu0 = 0;
 	int accu1 = 0;
 	u32 l;
-	u16 y_adjust = color_mode == OMAP_DSS_COLOR_NV12 ? 2 : 0;
 
-	_dispc_set_scale_param(plane, orig_width, orig_height - y_adjust,
+	_dispc_set_scale_param(plane, orig_width, orig_height,
 				out_width, out_height, five_taps,
 				rotation, DISPC_COLOR_COMPONENT_RGB_Y);
 	l = dispc_read_reg(DISPC_OVL_ATTRIBUTES(plane));
@@ -1546,7 +1545,6 @@ static void _dispc_set_scaling_uv(enum omap_plane plane,
 {
 	int scale_x = out_width != orig_width;
 	int scale_y = out_height != orig_height;
-	u16 y_adjust = 0;
 
 	if (!dss_has_feature(FEAT_HANDLE_UV_SEPARATE))
 		return;
@@ -1563,7 +1561,6 @@ static void _dispc_set_scaling_uv(enum omap_plane plane,
 		orig_height >>= 1;
 		/* UV is subsampled by 2 horz.*/
 		orig_width >>= 1;
-		y_adjust = 1;
 		break;
 	case OMAP_DSS_COLOR_YUV2:
 	case OMAP_DSS_COLOR_UYVY:
@@ -1587,7 +1584,7 @@ static void _dispc_set_scaling_uv(enum omap_plane plane,
 	if (out_height != orig_height)
 		scale_y = true;
 
-	_dispc_set_scale_param(plane, orig_width, orig_height - y_adjust,
+	_dispc_set_scale_param(plane, orig_width, orig_height,
 			out_width, out_height, five_taps,
 				rotation, DISPC_COLOR_COMPONENT_UV);
 

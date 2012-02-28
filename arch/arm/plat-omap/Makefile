@@ -34,3 +34,5 @@ obj-$(CONFIG_OMAP_MBOX_FWK) += mailbox.o
 
 obj-$(CONFIG_OMAP_PM_NOOP) += omap-pm-interface.o
 obj-$(CONFIG_OMAP_PM) += omap-pm-interface.o omap-pm-helper.o omap_cpuboost.o
+obj-$(CONFIG_DSSCOMP) += omap_dsscomp.o
+

@@ -983,6 +983,7 @@ static int ehci_hcd_omap_probe(struct platform_device *pdev)
 	}
 
 	pm_runtime_get_sync(dev->parent);
+	*pdata->usbhs_update_sar = 1;
 
 	/*
 	 * An undocumented "feature" in the OMAP3 EHCI controller,
@@ -1191,6 +1192,8 @@ static int ehci_omap_bus_resume(struct usb_hcd *hcd)
 
 	set_bit(HCD_FLAG_HW_ACCESSIBLE, &hcd->flags);
 	enable_irq(hcd->irq);
+
+	*pdata->usbhs_update_sar = 1;
 
 	return ehci_bus_resume(hcd);
 }

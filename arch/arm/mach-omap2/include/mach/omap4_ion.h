@@ -19,6 +19,8 @@
 
 #define OMAP4_RAMCONSOLE_START	(PLAT_PHYS_OFFSET + SZ_512M)
 #define OMAP4_RAMCONSOLE_SIZE	SZ_2M
+#include <linux/ion.h>
+
 #define OMAP4_ION_HEAP_SECURE_INPUT_SIZE	(SZ_1M * 90)
 #define OMAP4_ION_HEAP_TILER_SIZE		(SZ_128M - SZ_32M)
 #define OMAP4_ION_HEAP_NONSECURE_TILER_SIZE	SZ_32M
@@ -35,6 +37,15 @@
 					OMAP4_ION_HEAP_TILER_SIZE - \
 					PHYS_ADDR_TESLA_SIZE)
 #endif
+
+
+struct omap_ion_platform_data {
+	struct ion_platform_data *ion;
+	u32 tiler2d_size;
+	u32 nonsecure_tiler2d_size;
+};
+
+struct omap_ion_platform_data *get_omap_ion_platform_data(void);
 
 #ifdef CONFIG_ION_OMAP
 void omap_ion_init(void);

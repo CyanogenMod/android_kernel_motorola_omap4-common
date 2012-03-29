@@ -18,7 +18,7 @@
 #include <mach/omap4_ion.h>
 
 static struct ion_platform_data omap4_ion_data = {
-	.nr = 3,
+	.nr = 4,
 	.heaps = {
 		{
 			.type = ION_HEAP_TYPE_CARVEOUT,
@@ -40,6 +40,11 @@ static struct ion_platform_data omap4_ion_data = {
 			.base = 0,	/* append before prior */
 			.size = -1,
 		},
+		{
+			.type = ION_HEAP_TYPE_SYSTEM,
+			.id = OMAP_ION_HEAP_SYSTEM,
+			.name = "system",
+		}
 	},
 };
 

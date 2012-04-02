@@ -59,7 +59,6 @@ struct selinux_audit_data {
 	 * comments in avc.c for it's meaning and usage.
 	 */
 	u32 auditdeny;
-	struct av_decision *avd;
 	int result;
 };
 

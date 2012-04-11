@@ -37,6 +37,7 @@
 #include <linux/notifier.h>
 #include <linux/memory.h>
 #include <linux/memory_hotplug.h>
+#include <linux/swap.h>
 
 static uint32_t lowmem_debug_level = 2;
 static int lowmem_adj[6] = {
@@ -53,6 +54,15 @@ static size_t lowmem_minfree[6] = {
 	16 * 1024,	/* 64MB */
 };
 static int lowmem_minfree_size = 4;
+static size_t lowmem_swapfree[6] = {
+	1 * 1024,	/* 4MB */
+	2 * 1024,	/* 8MB */
+	3 * 1024,	/* 12MB */
+	4 * 1024,	/* 16MB */
+	6 * 1024,	/* 24MB */
+	10 * 1024,	/* 40MB */
+};
+static int lowmem_swapfree_size = 6;
 
 static unsigned int offlining;
 static struct task_struct *lowmem_deathpending;
@@ -152,8 +162,9 @@ static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
 	if (lowmem_minfree_size < array_size)
 		array_size = lowmem_minfree_size;
 	for (i = 0; i < array_size; i++) {
-		if (other_free < lowmem_minfree[i] &&
-		    other_file < lowmem_minfree[i]) {
+		if ((other_free < lowmem_minfree[i] &&
+		    other_file < lowmem_minfree[i]) ||
+		    (total_swap_pages ? nr_swap_pages < lowmem_swapfree[i] : 0)) {
 			min_adj = lowmem_adj[i];
 			break;
 		}
@@ -248,6 +259,8 @@ module_param_named(cost, lowmem_shrinker.seeks, int, S_IRUGO | S_IWUSR);
 module_param_array_named(adj, lowmem_adj, int, &lowmem_adj_size,
 			 S_IRUGO | S_IWUSR);
 module_param_array_named(minfree, lowmem_minfree, uint, &lowmem_minfree_size,
+			 S_IRUGO | S_IWUSR);
+module_param_array_named(swapfree, lowmem_swapfree, uint, &lowmem_swapfree_size,
 			 S_IRUGO | S_IWUSR);
 module_param_named(debug_level, lowmem_debug_level, uint, S_IRUGO | S_IWUSR);
 

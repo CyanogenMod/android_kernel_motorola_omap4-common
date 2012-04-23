@@ -622,6 +622,32 @@ skip_map1d:
 		log_event(0, ms, gsync, "++refs=%d for [%p]",
 				atomic_read(&gsync->refs), (u32) comp[ch]);
 
+		if (ch == 1 && clone_wq && phys) {
+			/* start work-queue */
+			struct dsscomp_clone_work *wk = kzalloc(sizeof(*wk),
+								GFP_NOWAIT);
+			if (!wk) {
+				dev_err(DEV(cdev),
+					"dsscomp clone wk create failed.");
+				atomic_dec(&gsync->refs);
+				continue;
+			}
+			wk->dma_cfg.src_buf_addr =  d->ovls[0].ba;
+			wk->dma_cfg.dst_buf_addr =  phys;
+			wk->dma_cfg.width = d->ovls[0].cfg.crop.w;
+			wk->dma_cfg.height = d->ovls[0].cfg.crop.h;
+			wk->dma_cfg.stride = view.v_inc;
+			wk->comp = comp[ch];
+			INIT_WORK(&wk->work, dsscomp_gralloc_do_clone);
+			r = queue_work(clone_wq, &wk->work);
+			if (!r) {
+				dev_err(DEV(cdev),
+					"dsscomp wq start failed");
+				atomic_dec(&gsync->refs);
+			}
+			continue;
+		}
+
 		r = dsscomp_delayed_apply(comp[ch]);
 		if (r)
 			dev_err(DEV(cdev), "failed to apply comp (%d)\n", r);

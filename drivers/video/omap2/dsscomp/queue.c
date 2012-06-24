@@ -507,9 +507,12 @@ int dsscomp_apply(dsscomp_t comp)
 	struct omap_overlay_manager *mgr;
 	struct omap_overlay *ovl;
 	struct dsscomp_setup_mgr_data *d;
+	struct omap_writeback_info wb_info;
+	struct omap_writeback *wb;
 	u32 oix;
 	bool cb_programmed = false;
 	bool wb_apply = false;
+	bool m2m_mgr_mode = false;
 
 	struct omapdss_ovl_cb cb = {
 		.fn = dsscomp_mgr_callback,
@@ -537,31 +540,25 @@ int dsscomp_apply(dsscomp_t comp)
 
 	dump_comp_info(cdev, d, "apply");
 
+	wb = omap_dss_get_wb(0); 
+	wb->get_wb_info(wb, &wb_info);
+
 	r = 0;
 	dmask = 0;
 
+	/* In some cases overlay cropping is based on WB resolution.
+	 * Because of that we need to apply WB settings before configuring
+	 * the rest of overlays. */
 	for (oix = 0; oix < comp->frm.num_ovls; oix++) {
 		struct dss2_ovl_info *oi = comp->ovls + oix;
 
-		/* keep track of disabled overlays */
-		if (!oi->cfg.enabled)
-			dmask |= 1 << oi->cfg.ix;
-
-		if (r && !comp->must_apply)
+		if (!comp->must_apply)
 			continue;
-
-		dump_ovl_info(cdev, oi);
-
-		if (oi->cfg.ix >= cdev->num_ovls && oi->cfg.ix != OMAP_DSS_WB) {
-			r = -EINVAL;
-			continue;
-		}
-		ovl = cdev->ovls[oi->cfg.ix];
 
 		if (oi->cfg.ix == OMAP_DSS_WB) {
 			/* update status of WB */
-			struct omap_writeback_info wb_info;
-			struct omap_writeback *wb;
+			if (!oi->cfg.enabled)
+				dmask |= 1 << oi->cfg.ix;
 
 			wb_apply = true;
 
@@ -569,13 +566,49 @@ int dsscomp_apply(dsscomp_t comp)
 			wb->get_wb_info(wb, &wb_info);
 			/* if prev comp was with M2M WB */
 			if (wb_info.mode == OMAP_WB_MEM2MEM_MODE &&
-				wb_info.enabled) {
-					if (wb->wait_framedone(wb))
-						dev_warn(DEV(cdev),
-							"WB Framedone expired\n");
+							wb_info.enabled) {
+				if (wb->wait_framedone(wb))
+					dev_warn(DEV(cdev),
+						"WB Framedone expired\n");
 			}
+
+			/* if wb is disabled and wb was enabled in prev
+			 * comp - set m2m flag. */
+			if (!oi->cfg.enabled && wb_info.enabled &&
+						wb_info.source == mgr->id &&
+					wb_info.mode == OMAP_WB_MEM2MEM_MODE)
+				m2m_mgr_mode = true;
+
+			/* set m2m_mgr_mode if we will capture in m2m mode
+			 * from the manager */
+			if (oi->cfg.enabled &&
+				oi->cfg.wb_mode == OMAP_WB_MEM2MEM_MODE &&
+						oi->cfg.wb_source == mgr->id)
+				m2m_mgr_mode = true;
+
 			r = set_dss_wb_info(oi);
-		} else {
+			break;
+		}
+	}
+
+	for (oix = 0; oix < comp->frm.num_ovls; oix++) {
+		struct dss2_ovl_info *oi = comp->ovls + oix;
+
+		if (oi->cfg.ix != OMAP_DSS_WB) {
+			/* keep track of disabled overlays */
+			if (!oi->cfg.enabled)
+				dmask |= 1 << oi->cfg.ix;
+
+			if (r && !comp->must_apply)
+				continue;
+
+			dump_ovl_info(cdev, oi);
+
+			if (oi->cfg.ix >= cdev->num_ovls) {
+				r = -EINVAL;
+				continue;
+			}
+
 			ovl = cdev->ovls[oi->cfg.ix];
 
 			/* set overlays' manager & info */
@@ -583,9 +616,10 @@ int dsscomp_apply(dsscomp_t comp)
 				r = -EBUSY;
 				goto skip_ovl_set;
 			}
+
 			if (ovl->manager != mgr) {
 				mutex_lock(&mtx);
-				if (!mgrq[comp->ix].blanking) {
+				if (!mgrq[comp->ix].blanking || m2m_mgr_mode) {
 					/*
 					 * Ideally, we should call
 					 * ovl->unset_manager(ovl),
@@ -630,7 +664,7 @@ skip_ovl_set:
 	 * composition.  Otherwise, we can skip the composition now.
 	 */
 	if (!r || comp->must_apply) {
-		r = set_dss_mgr_info(&d->mgr, &cb);
+		r = set_dss_mgr_info(&d->mgr, &cb, m2m_mgr_mode);
 		cb_programmed = r == 0;
 	}
 
@@ -702,7 +736,7 @@ skip_ovl_set:
 	}
 
 	mutex_lock(&mtx);
-	if (mgrq[comp->ix].blanking) {
+	if (mgrq[comp->ix].blanking && !m2m_mgr_mode) {
 		pr_info_ratelimited("ignoring apply mgr(%s) while blanking\n",
 								mgr->name);
 		r = -ENODEV;
@@ -738,11 +772,24 @@ skip_ovl_set:
 			r = 0;
 	}
 
+	/* This blanking is needed, when we received composition without WB for
+	 * disabling pipes, which are sources for manager, which is source for
+	 * WB. In this case manager apply operation is skipped and we need to
+	 * update caches and to invoke callback functions to free the buffers.
+	 */
+	if (!m2m_mgr_mode && wb_info.mode == OMAP_WB_MEM2MEM_MODE &&
+				wb_info.source == mgr->id && mgr->device &&
+			mgr->device->state != OMAP_DSS_DISPLAY_ACTIVE &&
+							comp->must_apply) {
+		mgr->blank(mgr, true);
+		goto done;
+	}
+
 	/* if failed to apply, kick out prior composition */
 	if (comp->must_apply && r)
 		mgr->blank(mgr, true);
 
-	if (!r && (d->mode & DSSCOMP_SETUP_MODE_DISPLAY)) {
+	if (!r && (d->mode & DSSCOMP_SETUP_MODE_DISPLAY) && !m2m_mgr_mode) {
 		if (dssdev_manually_updated(dssdev) && drv->update) {
 			r = drv->update(dssdev, d->win.x,
 					d->win.y, d->win.w, d->win.h);

@@ -413,6 +413,23 @@ static int omap4_ehci_update_device_disconnect(
 	return 0;
 }
 
+static struct {
+	int		stopped;
+	int		done;
+} tll_WA_info;
+
+static void tll_WA_func(void *info)
+{
+	tll_WA_info.stopped = 1;
+	dsb();
+	/* this loop does almost nothing,
+	   and expected to not mess with MPCore
+	   (TLBs, caches and write buffer), at least
+	   after the first iteration
+	*/
+	while (!tll_WA_info.done)
+		cpu_relax();
+}
 
 static int omap4_ehci_tll_hub_control(
 	struct usb_hcd	*hcd,
@@ -429,9 +446,10 @@ static int omap4_ehci_tll_hub_control(
 	u32		temp, temp1, status;
 	unsigned long	flags;
 	int		retval = 0;
-	u32		runstop, temp_reg;
-	u32             tll_reg = (u32)OMAP2_L4_IO_ADDRESS(
-					L3INIT_HSUSBTLL_CLKCTRL);
+	u32		runstop, temp_reg, tll_reg;
+	u32		cpu = smp_processor_id();
+
+	tll_reg = (u32)OMAP2_L4_IO_ADDRESS(L3INIT_HSUSBTLL_CLKCTRL);
 
 	spin_lock_irqsave(&ehci->lock, flags);
 	switch (typeReq) {
@@ -504,6 +522,19 @@ static int omap4_ehci_tll_hub_control(
 						"port %d would not halt!\n",
 						wIndex);
 
+				/* If we have another CPU online, force it
+				   to not mess with MPCore */
+				if (cpu_online(cpu ^ 0x1)) {
+					tll_WA_info.stopped = 0;
+					tll_WA_info.done = 0;
+					smp_call_function_single(cpu ^ 0x1,
+						tll_WA_func, NULL, 0);
+					while (!tll_WA_info.stopped)
+						cpu_relax();
+					udelay(1);
+					dsb();
+				}
+
 				temp_reg = __raw_readl(tll_reg);
 				temp_reg &= ~(1 << (wIndex + 8));
 
@@ -515,6 +546,10 @@ static int omap4_ehci_tll_hub_control(
 
 				/* Disable the Channel Optional Fclk */
 				__raw_writel(temp_reg, tll_reg);
+				dmb();
+
+				/*Release other CPU*/
+				tll_WA_info.done = 1;
 				retval = handshake(ehci, status_reg,
 					   PORT_RESUME, 0, 2000 /* 2msec */);
 

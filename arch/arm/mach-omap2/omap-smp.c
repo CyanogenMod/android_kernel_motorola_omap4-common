@@ -29,6 +29,7 @@
 #include <mach/omap4-common.h>
 
 #include "clockdomain.h"
+#include "omap4-sar-layout.h"
 
 /* SCU base address */
 static void __iomem *scu_base;
@@ -62,6 +63,8 @@ void __cpuinit platform_secondary_init(unsigned int cpu)
 	spin_lock(&boot_lock);
 	spin_unlock(&boot_lock);
 }
+
+void clkdm_init_mpu1(struct clockdomain *clkdm);
 
 int __cpuinit boot_secondary(unsigned int cpu, struct task_struct *idle)
 {
@@ -131,6 +134,8 @@ int __cpuinit boot_secondary(unsigned int cpu, struct task_struct *idle)
 		}
 
 	} else {
+		clkdm_init_mpu1(cpu1_clkdm);
+
 		dsb_sev();
 		booted = true;
 	}
@@ -146,6 +151,10 @@ int __cpuinit boot_secondary(unsigned int cpu, struct task_struct *idle)
 
 static void __init wakeup_secondary(void)
 {
+
+	static struct clockdomain *cpu1_clkdm;
+	static void __iomem *sar_base;
+
 	/*
 	 * Write the address of secondary startup routine into the
 	 * AuxCoreBoot1 where ROM code will jump and start executing
@@ -154,6 +163,15 @@ static void __init wakeup_secondary(void)
 	 */
 	omap_auxcoreboot_addr(virt_to_phys(omap_secondary_startup));
 	smp_wmb();
+
+	sar_base  = ioremap(OMAP44XX_SAR_RAM_BASE, SZ_16K);
+	__raw_writel(virt_to_phys(omap_secondary_startup),
+			sar_base + CPU1_WAKEUP_NS_PA_ADDR_OFFSET);
+
+	if (!cpu1_clkdm)
+		cpu1_clkdm = clkdm_lookup("mpu1_clkdm");
+
+//	clkdm_init_mpu1(cpu1_clkdm);
 
 	/*
 	 * Send a 'sev' to wake the secondary core from WFE.

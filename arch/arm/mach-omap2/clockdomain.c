@@ -293,6 +293,12 @@ void clkdm_init(struct clockdomain **clkdms,
 	 * should later enable hardware-supervised mode as appropriate
 	 */
 	list_for_each_entry(clkdm, &clkdm_list, node) {
+		printk("clkdm: %s\n", clkdm->name);
+		if(strncmp("mpu1_clkdm",clkdm->name,4)==0)
+		{
+			printk("Skipping mpu1\n");
+			continue;
+		}
 		if (clkdm->flags & CLKDM_CAN_FORCE_WAKEUP)
 			clkdm_wakeup(clkdm);
 		else if (clkdm->flags & CLKDM_CAN_DISABLE_AUTO)
@@ -304,6 +310,24 @@ void clkdm_init(struct clockdomain **clkdms,
 		_resolve_clkdm_deps(clkdm, clkdm->sleepdep_srcs);
 		clkdm_clear_all_sleepdeps(clkdm);
 	}
+
+	printk("clkdm init done\n");
+}
+
+void clkdm_init_mpu1(struct clockdomain *clkdm)
+{
+	printk("clkdm: %s\n", clkdm->name);
+	
+	if (clkdm->flags & CLKDM_CAN_FORCE_WAKEUP)
+		clkdm_wakeup(clkdm);
+	else if (clkdm->flags & CLKDM_CAN_DISABLE_AUTO)
+		clkdm_deny_idle(clkdm);
+
+	_resolve_clkdm_deps(clkdm, clkdm->wkdep_srcs);
+	clkdm_clear_all_wkdeps(clkdm);
+
+	_resolve_clkdm_deps(clkdm, clkdm->sleepdep_srcs);
+	clkdm_clear_all_sleepdeps(clkdm);
 }
 
 /**

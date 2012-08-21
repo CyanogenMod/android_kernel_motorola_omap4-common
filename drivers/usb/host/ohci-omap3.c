@@ -93,8 +93,13 @@ static int ohci_omap3_bus_resume(struct usb_hcd *hcd)
 {
 	struct device *dev = hcd->self.controller;
 	struct ohci_hcd_omap_platform_data  *pdata;
+	struct omap_hwmod	*oh;
 
 	dev_dbg(dev, "ohci_omap3_bus_resume\n");
+
+	oh = omap_hwmod_lookup(USBHS_OHCI_HWMODNAME);
+
+	omap_hwmod_disable_ioring_wakeup(oh);
 
 	/* Re-enable any external transceiver */
 	pdata = dev->platform_data;

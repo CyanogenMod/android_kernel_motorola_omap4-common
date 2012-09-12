@@ -373,8 +373,43 @@ int dsscomp_gralloc_queue(struct dsscomp_setup_dispc_data *d,
 			(u32) dsscomp_gralloc_queue, 0);
 
 	/* by default our auxiliary variable has wrong value */
+	wb_mgr_ix = MAX_MANAGERS;
+
+	/* check the composition
+	 * if composition has wb and connected to manager
+	 * in m2m mode while blanking - do not skip the
+	 * composition for this manager */
+	if (blanked) {
+		for (i = 0; i < d->num_ovls; i++) {
+			if (d->ovls[i].cfg.ix == 4 &&
+						d->ovls[i].cfg.wb_mode ==
+							OMAP_WB_MEM2MEM_MODE &&
+						d->ovls[i].cfg.enabled) {
+				wb_mgr_ix = d->ovls[i].cfg.mgr_ix;
+				break;
+			}
+		}
+
+		/* If current composition contains no WB, but previous
+		 * composition contains WB, then we should pass this
+		 * composition */
+		for (ch = 0; ch < MAX_MANAGERS; ch++) {
+			if (wb_mgr_ix >= MAX_MANAGERS &&
+						ovl_use_mask[ch] & (1 << 4)) {
+				wb_mgr_ix = ch;
+				break;
+			}
+		}
+
+		if (wb_mgr_ix < MAX_MANAGERS)
+			for (ch = 0; ch < MAX_MANAGERS; ch++) {
+				if (ch != wb_mgr_ix)
+					ovl_use_mask[ch] = 0;
+			}
+	}
+
 	/* ignore frames while we are blanked */
-	skip = blanked;
+	skip = blanked && wb_mgr_ix >= MAX_MANAGERS;
 
 	if (skip && (debug & DEBUG_PHASES))
 		dev_info(DEV(cdev), "[%p,%08x] ignored\n", gsync, d->sync_id);
@@ -391,7 +426,8 @@ int dsscomp_gralloc_queue(struct dsscomp_setup_dispc_data *d,
 	memset(comp, 0, sizeof(comp));
 	memset(ovl_new_use_mask, 0, sizeof(ovl_new_use_mask));
 
-	if (skip)
+	if ((skip || !dsscomp_is_any_device_active()) &&
+		wb_mgr_ix >= MAX_MANAGERS)
 		goto skip_comp;
 
 	d->mode = DSSCOMP_SETUP_DISPLAY;
@@ -415,6 +451,10 @@ int dsscomp_gralloc_queue(struct dsscomp_setup_dispc_data *d,
 		}
 		channels[i] = ch = mgr->id;
 
+		if (wb_mgr_ix < MAX_MANAGERS && blanked)
+			if (wb_mgr_ix != i)
+				continue;
+
 		mgr_set_mask |= 1 << ch;
 
 		/* swap red & blue if requested */
@@ -424,6 +464,13 @@ int dsscomp_gralloc_queue(struct dsscomp_setup_dispc_data *d,
 
 	/* create dsscomp objects for set managers (including active ones) */
 	for (ch = 0; ch < MAX_MANAGERS; ch++) {
+
+		if (wb_mgr_ix < MAX_MANAGERS && blanked) {
+			if (wb_mgr_ix != ch) {
+				comp[ch] = NULL;
+				continue;
+			}
+		}
 
 		if (!(mgr_set_mask & (1 << ch)) && !ovl_use_mask[ch])
 			continue;
@@ -621,6 +668,11 @@ skip_map1d:
 		atomic_inc(&gsync->refs);
 		log_event(0, ms, gsync, "++refs=%d for [%p]",
 				atomic_read(&gsync->refs), (u32) comp[ch]);
+
+		if (wb_mgr_ix < MAX_MANAGERS && blanked)
+			comp[ch]->m2m_only = true;
+		else
+			comp[ch]->m2m_only = false;
 
 		if (ch == 1 && clone_wq && phys) {
 			/* start work-queue */

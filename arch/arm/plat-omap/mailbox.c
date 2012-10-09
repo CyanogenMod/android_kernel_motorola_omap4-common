@@ -39,7 +39,7 @@ static int mbox_configured;
 static DEFINE_MUTEX(mbox_configured_lock);
 struct pm_qos_request_list mbox_qos_request;
 
-#define SET_MPU_CORE_CONSTRAINT 10
+#define SET_MPU_CORE_CONSTRAINT 400
 #define CLEAR_MPU_CORE_CONSTRAINT -1
 
 static unsigned int mbox_kfifo_size = CONFIG_OMAP_MBOX_KFIFO_SIZE;

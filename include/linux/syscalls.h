@@ -848,5 +848,5 @@ asmlinkage long sys_open_by_handle_at(int mountdirfd,
 				      int flags);
 asmlinkage long sys_setns(int fd, int nstype);
 
-asmlinkage long sys_finit_module(int fd, const char __user *uargs);
+asmlinkage long sys_finit_module(int fd, const char __user *uargs, int flags);
 #endif

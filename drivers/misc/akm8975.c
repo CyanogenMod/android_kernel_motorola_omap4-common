@@ -79,6 +79,7 @@ static atomic_t data_ready;
 static int open_state;
 static int open_flag;
 
+static int solana_flag;
 static int m_flag;
 static int a_flag;
 static int mv_flag;
@@ -300,10 +301,36 @@ static int AKECS_GetData(char *rbuf, int size)
 		return -1;
 	}
 
-	mutex_lock(&sense_data_mutex);
-	memcpy(rbuf, sense_data, size);
-	atomic_set(&data_ready, 0);
-	mutex_unlock(&sense_data_mutex);
+	if(solana_flag){
+		char tempBuf[SENSOR_DATA_SIZE];
+		char temp;
+		
+		mutex_lock(&sense_data_mutex);
+		memcpy(tempBuf, sense_data, size);
+		atomic_set(&data_ready, 0);
+		mutex_unlock(&sense_data_mutex);
+		
+		printk(KERN_INFO "raw : rawrz %d, %6d", tempBuf[1], tempBuf[2]);
+		temp = tempBuf[1];
+		tempBuf[1] = tempBuf[3];
+		tempBuf[3] = temp;
+		
+		temp = tempBuf[2];
+		tempBuf[2] = tempBuf[4];
+		tempBuf[4] = temp;
+		printk(KERN_INFO "JAKEDEBUG: rawrz %6d, %6d", tempBuf[5], tempBuf[6]);
+		tempBuf[5] = 255 - tempBuf[5] ;
+		tempBuf[6] = tempBuf[6] ^ 255;
+		//printk(KERN_INFO "JAKEDEBUG: after  %6d, %6d", tempBuf[5], tempBuf[6]);
+		
+		memcpy(rbuf, tempBuf, size);
+	}
+	else {
+		mutex_lock(&sense_data_mutex);
+		memcpy(rbuf, sense_data, size);
+		atomic_set(&data_ready, 0);
+		mutex_unlock(&sense_data_mutex);
+	}
 
 	failure_count = 0;
 	return 0;
@@ -432,6 +459,7 @@ akm_aot_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 	case ECS_IOCTL_APP_SET_MFLAG:
 	case ECS_IOCTL_APP_SET_AFLAG:
 	case ECS_IOCTL_APP_SET_MVFLAG:
+	case ECS_IOCTL_APP_SET_SOLANAFLAG:
 		if (copy_from_user(&flag, argp, sizeof(flag)))
 			return -EFAULT;
 		if (flag < 0 || flag > 1)
@@ -470,6 +498,9 @@ akm_aot_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 		break;
 	case ECS_IOCTL_APP_GET_MVFLAG:
 		flag = mv_flag;
+		break;
+	case ECS_IOCTL_APP_SET_SOLANAFLAG:
+		solana_flag = flag;
 		break;
 	case ECS_IOCTL_APP_SET_DELAY:
 		akmd_delay[0] = delay[0];
@@ -942,6 +973,7 @@ int akm8975_probe(struct i2c_client *client, const struct i2c_device_id *id)
 	m_flag = 0;
 	a_flag = 0;
 	mv_flag = 0;
+	solana_flag = 0;
 
 	akm->akm_early_suspend.suspend = akm8975_early_suspend;
 	akm->akm_early_suspend.resume = akm8975_early_resume;

@@ -310,7 +310,6 @@ static int AKECS_GetData(char *rbuf, int size)
 		atomic_set(&data_ready, 0);
 		mutex_unlock(&sense_data_mutex);
 		
-		printk(KERN_INFO "raw : rawrz %d, %6d", tempBuf[1], tempBuf[2]);
 		temp = tempBuf[1];
 		tempBuf[1] = tempBuf[3];
 		tempBuf[3] = temp;
@@ -318,10 +317,9 @@ static int AKECS_GetData(char *rbuf, int size)
 		temp = tempBuf[2];
 		tempBuf[2] = tempBuf[4];
 		tempBuf[4] = temp;
-		printk(KERN_INFO "JAKEDEBUG: rawrz %6d, %6d", tempBuf[5], tempBuf[6]);
+		
 		tempBuf[5] = 255 - tempBuf[5] ;
 		tempBuf[6] = tempBuf[6] ^ 255;
-		//printk(KERN_INFO "JAKEDEBUG: after  %6d, %6d", tempBuf[5], tempBuf[6]);
 		
 		memcpy(rbuf, tempBuf, size);
 	}

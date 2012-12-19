@@ -198,6 +198,7 @@ static struct gpio_event_platform_data mapphone_gpiokey_data = {
 
 static struct platform_device mapphone_switch_device = {
 	.name = GPIO_EVENT_DEV_NAME,
+	//.name = "mapphone-switch",
 	.id = 0,
 	.dev		= {
 		.platform_data	= &mapphone_switch_data,
@@ -206,6 +207,7 @@ static struct platform_device mapphone_switch_device = {
 
 static struct platform_device mapphone_gpiokey_device = {
 	.name = GPIO_EVENT_DEV_NAME,
+	//.name = "mapphone-gpiokey",
 	.id = 0,
 	.dev	    = {
 		.platform_data  = &mapphone_gpiokey_data,
@@ -310,12 +312,18 @@ static int __init mapphone_init_keypad(void)
 	if (mapphone_dt_kp_init() != 0)
 		printk(KERN_INFO "Keypad: using non-dt configuration\n");
 
+	//printk("registering reset_key_device\n");
 	platform_device_register(&mapphone_reset_keys_device);
 
 	if (is_slider_found) {
+		//printk("registering switch_device\n");
 		platform_device_register(&mapphone_switch_device);
+	is_gpiokey_found = 0; //Don't register gpiokey device. it only breaks things.
 		if (is_gpiokey_found)
+			{
+			printk("registering gpiokey_device\n");
 			platform_device_register(&mapphone_gpiokey_device);
+			}
 	}
 	status = omap4_keyboard_init(&omap_kp_data);
 	if (status)

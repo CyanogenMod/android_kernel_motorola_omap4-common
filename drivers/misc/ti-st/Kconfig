@@ -30,4 +30,14 @@ config ST_FM
 	  This enables the FM driver for TI BT/FM/GPS combo devices
 	  This makes use of shared transport line discipline core driver to
 	  communicate with the FM core of the combo chip.
+
+config ST_HCI
+	tristate "HCI TTY emulation driver for Bluetooth"
+	depends on TI_ST
+	help
+	  This enables the TTY device like emulation for HCI used by
+	  user-space Bluetooth stacks.
+	  It will provide a character device for user space Bluetooth stack to
+	  send/receive data over shared transport.
+
 endmenu

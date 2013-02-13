@@ -139,10 +139,6 @@ struct ehci_hcd {			/* one per controller */
 	unsigned		has_synopsys_hc_bug:1; /* Synopsys HC */
 	unsigned		no_companion_port_handoff:1; /* Omap */
 
-	/* Transceiver QUIRKS */
-	unsigned		has_smsc_ulpi_bug:1; /* Smsc */
-	unsigned		resume_error_flag:1; /* Smsc */
-
 	/* required for usb32 quirk */
 	#define OHCI_CTRL_HCFS          (3 << 6)
 	#define OHCI_USB_OPER           (2 << 6)

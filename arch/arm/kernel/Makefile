@@ -66,6 +66,8 @@ ifneq ($(CONFIG_ARCH_EBSA110),y)
   obj-y		+= io.o
 endif
 
+obj-$(CONFIG_BOOTINFO)		+= bootinfo.o
+
 head-y			:= head$(MMUEXT).o
 obj-$(CONFIG_DEBUG_LL)	+= debug.o
 obj-$(CONFIG_EARLY_PRINTK)	+= early_printk.o

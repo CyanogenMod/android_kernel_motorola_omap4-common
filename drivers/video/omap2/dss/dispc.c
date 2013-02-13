@@ -529,16 +529,10 @@ int dispc_runtime_get(void)
 	if (dispc.runtime_count++ == 0) {
 		DSSDBG("dispc_runtime_get\n");
 
-		/*
-		 * With the DSS FIFO optimizations, ramdom lockups and reboots
-		 * are seen. It has been identified that L3_1 CD amd L3_2 is
-		 * idling and not responding to the traffic initiated by DSS.
-		 * The Workaround suggested by Hardware team is to keep the L3_1
-		 * and L3_2 CD in NO_SLEEP mode, when DSS is active.
-		 */
-		clkdm_deny_idle(l3_1_clkdm);
-		clkdm_deny_idle(l3_2_clkdm);
 
+	/* Removes latency constraint */
+	omap_pm_set_max_dev_wakeup_lat(&dispc.pdev->dev,
+					&dispc.pdev->dev, -1);
 		r = dss_runtime_get();
 		if (r)
 			goto err_dss_get;
@@ -593,14 +587,6 @@ void dispc_runtime_put(void)
 		clk_disable(dispc.dss_clk);
 
 		dss_runtime_put();
-
-		/*
-		 * Restore L3_1 amd L3_2 CD to HW_AUTO, when DSS module idles.
-		 * When DSS is idle, we can allow L3_1 and L3_2 to idle.
-		 */
-		clkdm_allow_idle(l3_1_clkdm);
-		clkdm_allow_idle(l3_2_clkdm);
-
 	}
 
 	mutex_unlock(&dispc.runtime_lock);

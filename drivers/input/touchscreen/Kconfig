@@ -144,6 +144,14 @@ config TOUCHSCREEN_CYTTSP4
 
 	  If unsure, say N.
 
+config TOUCHSCREEN_ATMXT
+	tristate "Atmel MaXTouch Touchscreen Driver"
+	depends on I2C
+	help
+	  Say Y here if you have a Atmel MaXTouch driven touchscreen.
+
+	  If unsure, say N.
+
 config TOUCHSCREEN_CYTTSP3
 	tristate "Cypress TrueTouch Generation 3 Touchscreen Driver"
 	depends on I2C

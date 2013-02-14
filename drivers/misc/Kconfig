@@ -637,6 +637,13 @@ config OMAP_DEV_TYPE_DRV
         bool "Motorola OMAP Device Type Driver"
         default n
 
+config PN544
+	bool "NXP PN544 NFC Controller Driver"
+	depends on I2C
+	default n
+	help
+	  NXP PN544 Near Field Communication controller support.
+
 config VIB_PWM_SWEEP
 	bool "PWM Vibrator Sweep signal"
 	depends on VIB_PWM

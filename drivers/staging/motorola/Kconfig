@@ -1,0 +1,11 @@
+#
+# TTY over spi slave configuration
+#
+
+menu "TTY driver over OMAP4 SPI slave"
+
+config TTY_SPI_SLAVE_MDM6600
+	bool "tty over spi slave driver"
+	default n
+
+endmenu

@@ -550,6 +550,13 @@ config INPUT_XEN_KBDDEV_FRONTEND
 	  To compile this driver as a module, choose M here: the
 	  module will be called xen-kbdfront.
 
+config INPUT_BMP180
+	bool "BMP180 digital pressure sensor"
+	depends on I2C && SYSFS
+	help
+	  If you say yes here you get support for the Bosch Sensortec
+	  BMP180 digital pressure sensor
+
 config INPUT_CT405
 	tristate "CT405 ALS & IR Sensor"
 	default n

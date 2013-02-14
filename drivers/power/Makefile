@@ -42,4 +42,5 @@ obj-$(CONFIG_CHARGER_CPCAP)	+= cpcap-factory.o
 obj-$(CONFIG_BATTERY_CPCAP)	+= cpcap-battery.o
 obj-$(CONFIG_PM_DBG_DRV)	+= pm_dbg.o
 obj-$(CONFIG_CHARGER_BQ2415x)	+= bq2415x_charger.o
+obj-$(CONFIG_CHARGER_BQ24618)	+= bq24618-charger.o
 obj-$(CONFIG_TWL6030_BCI_BATTERY)	+= twl6030_bci_battery.o

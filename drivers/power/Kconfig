@@ -108,6 +108,12 @@ config BATTERY_OLPC
 	help
 	  Say Y to enable support for the battery on the OLPC laptop.
 
+config CHARGER_BQ24618
+	tristate "BQ24618 charger"
+	depends on MFD_CPCAP
+	help
+	  Say Y to enable support for BQ24816 battery charger.
+
 config BATTERY_TOSA
 	tristate "Sharp SL-6000 (tosa) battery"
 	depends on MACH_TOSA && MFD_TC6393XB && TOUCHSCREEN_WM97XX

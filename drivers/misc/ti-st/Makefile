@@ -5,3 +5,6 @@
 obj-$(CONFIG_TI_ST) 		+= st_drv.o
 st_drv-objs			:= st_core.o st_kim.o st_ll.o
 obj-$(CONFIG_ST_GPS)            += gps_drv.o
+obj-$(CONFIG_ST_FM) 		+= fm_drv.o
+fm_drv-objs                     := fmdrv_chr.o
+

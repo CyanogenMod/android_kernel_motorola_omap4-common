@@ -304,7 +304,13 @@ static void hidinput_configure_usage(struct hid_input *hidinput, struct hid_fiel
 		goto ignore;
 
 	case HID_UP_KEYBOARD:
+#if 0
+		/*
+		 * Disable autorepeat on the kernel,
+		 * The key events autorepeat is done by Anrdroid framework,
+		 */
 		set_bit(EV_REP, input->evbit);
+#endif
 
 		if ((usage->hid & HID_USAGE) < 256) {
 			if (!hid_keyboard[usage->hid & HID_USAGE]) goto ignore;

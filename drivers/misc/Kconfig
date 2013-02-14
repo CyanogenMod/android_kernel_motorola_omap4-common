@@ -625,6 +625,14 @@ config TWL6040_VIB
 	depends on TWL6040_CODEC && ANDROID_TIMED_OUTPUT
 	default n
 
+config SND_EXTERNAL_AMP
+	bool "External Amp Driver"
+	default n
+
+config SND_LM48901_AMP
+	bool "LM48901 Amp Driver"
+	default n
+
 config OMAP_DEV_TYPE_DRV
         bool "Motorola OMAP Device Type Driver"
         default n
@@ -645,6 +653,7 @@ config VIB_OMAP_PWM
 config VIB_PWM
         bool "PWM Vibrator"
         default n
+
 config OMAP4_DUTY_CYCLE
 	tristate "Control OPP_NITRO usage based on duty cycle strategy"
 	depends on ARCH_OMAP4

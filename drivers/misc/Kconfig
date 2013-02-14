@@ -403,6 +403,28 @@ config SENSORS_AK8975
 	  If you say yes here you get support for Asahi Kasei's
 	  orientation sensor AK8975.
 
+config SENSORS_AKM8973
+	tristate "AKM8973 Magnetometer"
+	default n
+	depends on I2C
+	help
+	 Support for the AKM8973 tri-axis magnetometer
+
+config SENSORS_AKM8973_AKMD
+	tristate "AKM8973 Magnetometer"
+	default n
+	depends on I2C
+	help
+	 Support for the AKM8973 tri-axis magnetometer (compass)
+
+config SENSORS_LIS331DLH
+	tristate "LIS331DLH Accelerometer"
+	default n
+	depends on I2C
+	help
+	 Say yes here if you wish to include the STI Micro
+	 LIS331DLH accelerometer driver.
+
 config EP93XX_PWM
 	tristate "EP93xx PWM support"
 	depends on ARCH_EP93XX
@@ -466,6 +488,30 @@ config VMWARE_BALLOON
 	  To compile this driver as a module, choose M here: the
 	  module will be called vmw_balloon.
 
+config SENSORS_LIS3DH
+	tristate "LIS3DH Accelerometer"
+	default n
+	depends on I2C
+	help
+	 Say yes here if you wish to include the ST Micro
+	 LIS3DH accelerometer driver.
+
+config SENSORS_MSP430
+	tristate "MSP430 Sensor Processor"
+	default n
+	depends on I2C
+	help
+	  Say yes here if you wish to include the TI
+	  MSP430 Sensor processor driver.
+
+config SENSORS_KXTF9
+	tristate "KXTF9 Accelerometer"
+	default n
+	depends on I2C
+	help
+	  Say yes here if you wish to include the Kionix
+	  KXTF9 accelerometer driver.
+
 config ARM_CHARLCD
 	bool "ARM Ltd. Character LCD Driver"
 	depends on PLAT_VERSATILE
@@ -475,6 +521,21 @@ config ARM_CHARLCD
 	  very much more than display the text "ARM Linux" on the first
 	  line and the Linux version on the second line, but that's
 	  still useful.
+
+config SENSORS_ATTINY48MU_CAP_PROX
+	tristate "Capacitive Proximity Sensor"
+	default n
+	depends on I2C
+	help
+	  Say yes here if you wish to include the
+	  Capacitive Proximity Sensor driver.
+
+config SENSORS_L3G4200D
+	tristate "L3G4200D Gyroscope"
+	default n
+	depends on I2C
+	help
+	  Support for the L3G4200D driver
 
 config BMP085
 	tristate "BMP085 digital pressure sensor"

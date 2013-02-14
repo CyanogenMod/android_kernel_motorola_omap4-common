@@ -400,6 +400,13 @@ config LEDS_BD7885
 	  This option enables support for LEDs connected to BD7885
 	  LED driver chips accessed via the I2C bus.  Supported
 
+config LEDS_BU9847
+	tristate "LED Support for BU9847 I2C chips"
+	depends on LEDS_CLASS && I2C
+	help
+	  This option enables support for LEDs connected to BU9847
+	  LED driver chips accessed via the I2C bus.  Supported
+
 config LEDS_OMAP4430_SDP_DISPLAY
 	bool "Display LED support for OMAP4430 SDP"
 	depends on LEDS_CLASS

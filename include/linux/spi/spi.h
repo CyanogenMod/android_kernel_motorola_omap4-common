@@ -446,6 +446,17 @@ struct spi_transfer {
 	u32		speed_hz;
 
 	struct list_head transfer_list;
+
+#ifdef CONFIG_TTY_SPI_SLAVE_MDM6600
+/*
+	 * when spi working as slave, the protocol need to be involved
+	 * for every transfer to notify master the status of slave.
+	 */
+	void (*transfer_start_callback)(void *transfer_context);
+	void (*transfer_complete_callback)(void *transfer_context);
+	void *transfer_context;
+#endif
+
 };
 
 /**

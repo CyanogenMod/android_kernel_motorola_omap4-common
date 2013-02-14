@@ -540,6 +540,10 @@ config TWL6040_VIB
 	depends on TWL6040_CODEC && ANDROID_TIMED_OUTPUT
 	default n
 
+config FEAT_TD_TS27010MUX
+	bool "TS27010 MUX Motorola driver for TD-SCDMA modem"
+	default n
+
 config OMAP4_DUTY_CYCLE
 	tristate "Control OPP_NITRO usage based on duty cycle strategy"
 	depends on ARCH_OMAP4

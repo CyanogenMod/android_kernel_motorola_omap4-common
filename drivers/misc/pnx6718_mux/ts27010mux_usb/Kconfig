@@ -1,0 +1,11 @@
+#
+# TS 27.010 configuration
+#
+
+menu "Motorola TS 27.010 Mux driver over USB for TD-SCDMA modem"
+
+config FEAT_TD_TS27010MUX_USB
+        tristate "Motorola TS 27.010 Mux driver over USB for TD-SCDMA modem"
+        default n
+
+endmenu

@@ -550,6 +550,15 @@ config INPUT_XEN_KBDDEV_FRONTEND
 	  To compile this driver as a module, choose M here: the
 	  module will be called xen-kbdfront.
 
+config INPUT_MAX9635
+	tristate "MAX9635 ALS Sensor"
+	default n
+	help
+	  Say Y here if you wish to include support for the MAX9635
+	  ALS sensor.
+
+	  If unsure, say N.
+
 config INPUT_BMA180
 	bool "BMA-180 Tri-axis accelerometer"
 	depends on I2C && SYSFS

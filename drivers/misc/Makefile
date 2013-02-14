@@ -56,6 +56,7 @@ obj-$(CONFIG_OMAP_DIE_TEMP_SENSOR)	+= omap_temp_sensor.o
 obj-$(CONFIG_OMAP4_DUTY_CYCLE)  += omap4_duty_cycle.o
 obj-$(CONFIG_TWL6040_VIB)	+= twl6040-vib.o
 obj-$(CONFIG_SEC_DRIVER)	+= sec/
+obj-$(CONFIG_APANIC_MMC)	+= apanic_mmc.o
 obj-$(CONFIG_SENSORS_ATTINY48MU_CAP_PROX)	+= attiny48mu_cap_prox.o
 obj-$(CONFIG_SENSORS_KXTF9)	+= kxtf9.o
 obj-$(CONFIG_SENSORS_MSP430)	+= msp430.o

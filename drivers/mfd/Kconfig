@@ -771,6 +771,33 @@ config MFD_TPS65910
 config TPS65911_COMPARATOR
 	tristate
 
+config MFD_CPCAP
+	tristate "Support for CPCAP"
+	depends on SPI
+	help
+	  Say yes here if you want to include drivers for the CPCAP chip.
+
+config USB_TESTING_POWER
+	bool "Support Moto USB factory cable for phone power supply."
+	default n
+	help
+	  This enables Moto USB factory cable to power supply phone and does
+	  not break PM suspend entrance condition at all. For phone testing
+	  purpose only.
+
+config USB_BYPASS_CPCAP
+	bool "Support USB bypass to BP"
+	depends on MFD_CPCAP
+	default n
+	help
+	  This enables the bypass function in platform device cpcap_usb_det.
+
+config CPCAP_USB_DET_LOGGING
+	bool "Enable CPCAP USB detection driver logging."
+	default n
+	help
+	  This enables the CPCAP USB detection driver logging.
+
 endif # MFD_SUPPORT
 
 menu "Multimedia Capabilities Port drivers"

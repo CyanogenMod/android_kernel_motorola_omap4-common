@@ -68,6 +68,7 @@ obj-$(CONFIG_SENSORS_LIS3DH)	+= lis3dh.o
 obj-$(CONFIG_SND_LM48901_AMP)	+= lm48901.o
 obj-$(CONFIG_SND_LM48901_AMP)	+= lm48901_tab_2p1_3ch_lrw.o
 obj-$(CONFIG_SND_LM48901_AMP)	+= lm48901_tab_stereo_2ch_lr.o
+obj-$(CONFIG_MOTSOC1)          += motsoc1.o
 obj-$(CONFIG_OMAP_DEV_TYPE_DRV) += omap_dev_type.o
 obj-$(CONFIG_FEAT_TD_TS27010MUX)	+= pnx6718_mux/
 obj-y                           += radio_ctrl/

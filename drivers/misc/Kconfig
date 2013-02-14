@@ -633,6 +633,14 @@ config SND_LM48901_AMP
 	bool "LM48901 Amp Driver"
 	default n
 
+config MOTSOC1
+	tristate "MOTSOC1 driver"
+	default n
+	depends on I2C
+	help
+	  Say yes here if you wish to include the MOTSOC1
+	  misc driver.
+
 config OMAP_DEV_TYPE_DRV
         bool "Motorola OMAP Device Type Driver"
         default n

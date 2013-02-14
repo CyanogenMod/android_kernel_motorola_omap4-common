@@ -1,0 +1,3 @@
+menuconfig OMAP2_DSS_MANAGER
+	tristate "OMAP2/3/4 DSS2 Manager"
+	depends on OMAP2_DSS

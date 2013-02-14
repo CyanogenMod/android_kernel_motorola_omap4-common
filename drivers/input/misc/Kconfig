@@ -515,6 +515,14 @@ config INPUT_HMC5843
 	  Say Y here to add support for the Honeywell HMC 5843 3-Axis
 	  Magnetometer (digital compass).
 
+config INPUT_HALLEFFECT_BU52014HV
+	tristate "BU52014HV Hall Effect Sensor"
+	help
+	  Say Y here if you wish to include support for the BU52014HV hall
+	  effect sensor.
+
+	  If unsure, say N.
+
 config INPUT_BH1780
 	bool "ROHM BH1780GLI ambient light sensor"
 	depends on I2C && SYSFS

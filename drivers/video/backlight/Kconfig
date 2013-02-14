@@ -290,6 +290,18 @@ config BACKLIGHT_ADP5520
 	  To compile this driver as a module, choose M here: the module will
 	  be called adp5520_bl.
 
+config BACKLIGHT_LM3532
+	tristate "Backlight Driver for LM3532"
+	depends on BACKLIGHT_CLASS_DEVICE && I2C
+	select NEW_LEDS
+	select LEDS_CLASS
+	help
+	  If you have a LCD backlight connected to the LM3532,
+	  say Y here to enable this driver.
+
+	  To compile this driver as a module, choose M here: the module will
+	  be called lm3532_bl.
+
 config BACKLIGHT_ADP8860
 	tristate "Backlight Driver for ADP8860/ADP8861/ADP8863 using WLED"
 	depends on BACKLIGHT_CLASS_DEVICE && I2C

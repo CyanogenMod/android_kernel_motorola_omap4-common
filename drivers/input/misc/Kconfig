@@ -550,6 +550,15 @@ config INPUT_XEN_KBDDEV_FRONTEND
 	  To compile this driver as a module, choose M here: the
 	  module will be called xen-kbdfront.
 
+config INPUT_CT405
+	tristate "CT405 ALS & IR Sensor"
+	default n
+	help
+	  Say Y here if you wish to include support for the CT405 ALS
+	  and IR sensor.
+
+	  If unsure, say N.
+
 config INPUT_ALS_IR_ISL29030
 	tristate "ISL29030 ALS & IR Sensor"
 	default n

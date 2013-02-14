@@ -70,6 +70,7 @@ obj-$(CONFIG_SND_LM48901_AMP)	+= lm48901_tab_stereo_2ch_lr.o
 obj-$(CONFIG_OMAP_DEV_TYPE_DRV) += omap_dev_type.o
 obj-$(CONFIG_FEAT_TD_TS27010MUX)	+= pnx6718_mux/
 obj-y                           += radio_ctrl/
+obj-$(CONFIG_TCMD_DRIVER)	+= tcmd_driver.o
 obj-y				+= ts27010mux/
 obj-$(CONFIG_VIB_GPIO)		+= vib-gpio.o
 obj-$(CONFIG_VIB_OMAP_PWM)	+= vib-omap-pwm.o

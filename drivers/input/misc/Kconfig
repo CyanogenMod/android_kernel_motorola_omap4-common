@@ -62,6 +62,14 @@ config INPUT_AD714X_SPI
 	  To compile this driver as a module, choose M here: the
 	  module will be called ad714x-spi.
 
+config INPUT_CY8C201XX
+	tristate "Cypress CY8C201xx Button IC"
+	depends on I2C
+	help
+	  Say Y here if you have a CY8C201xx button chip.
+
+	  If unsure, say N.
+
 config INPUT_PCSPKR
 	tristate "PC Speaker support"
 	depends on PCSPKR_PLATFORM

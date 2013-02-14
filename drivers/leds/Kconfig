@@ -229,6 +229,12 @@ config LEDS_LP5523
 	  Driver provides direct control via LED class and interface for
 	  programming the engines.
 
+config LEDS_LP8550
+	tristate "LED support for the LP8550"
+	depends on LEDS_CLASS && I2C
+	help
+	  This option enables support for the LP8550 LED driver
+
 config LEDS_CLEVO_MAIL
 	tristate "Mail LED on Clevo notebook"
 	depends on LEDS_CLASS

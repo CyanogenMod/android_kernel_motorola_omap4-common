@@ -49,6 +49,19 @@ config PANEL_ACX565AKM
 	help
 	  This is the LCD panel used on Nokia N900
 
+config PANEL_MAPPHONE
+	tristate "Mapphone Panel"
+	help
+	  LCD Panel used in Mapphone
+
+config PANEL_MAPPHONE_OMAP4_HDTV
+	tristate "Mapphone OMAP4 HDTV Panel"
+	help
+	  HDTV Panel used in Mapphone. Specifically on
+	  the OMAP4 platform. This will be used to
+	  determine whether or not to use the default
+	  HDMI driver or a Mapphone specific driver.
+
 config PANEL_TC358765
 	tristate "Toshiba TC358765 DSI-2-LVDS chip"
 	depends on OMAP2_DSS_DSI && I2C

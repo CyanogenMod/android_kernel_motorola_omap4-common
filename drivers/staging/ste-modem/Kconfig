@@ -1,0 +1,8 @@
+config MID_SAFE_MODE_HELPER
+	tristate "MID safe mode helper driver"
+	help
+	  Say Yes here if you want to support safe mode operation.
+	  Safe mode is mandatory to avoid current leakage between host
+	  and modem chipset.
+
+#	depends on ARCH_OMAP3 || ARCH_OMAP4

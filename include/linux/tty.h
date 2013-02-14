@@ -52,6 +52,10 @@
 #define N_TI_WL		22	/* for TI's WL BT, FM, GPS combo chips */
 #define N_TRACESINK	23	/* Trace data routing for MIPI P1149.7 */
 #define N_TRACEROUTER	24	/* Trace data routing for MIPI P1149.7 */
+#define N_TD_TS2710_UART	25	/* 3GPP TS 27.010 MUX over UART */
+#define N_TD_TS2710_USB	26	/* 3GPP TS 27.010 MUX over USB */
+#define N_TS2710        27      /* 3GPP TS 27.010 MUX*/
+#define N_QMI		28	/* MUX over SPI */
 
 /*
  * This character is the same as _POSIX_VDISABLE: it cannot be used as

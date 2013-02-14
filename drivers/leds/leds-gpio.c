@@ -10,10 +10,12 @@
  * published by the Free Software Foundation.
  *
  */
+#include <linux/err.h>
 #include <linux/kernel.h>
 #include <linux/init.h>
 #include <linux/platform_device.h>
 #include <linux/leds.h>
+#include <linux/regulator/consumer.h>
 #include <linux/of_platform.h>
 #include <linux/of_gpio.h>
 #include <linux/slab.h>
@@ -31,6 +33,7 @@ struct gpio_led_data {
 	u8 blinking;
 	int (*platform_gpio_blink_set)(unsigned gpio, int state,
 			unsigned long *delay_on, unsigned long *delay_off);
+	struct regulator *regulator;
 };
 
 static void gpio_led_work(struct work_struct *work)
@@ -54,10 +57,15 @@ static void gpio_led_set(struct led_classdev *led_cdev,
 		container_of(led_cdev, struct gpio_led_data, cdev);
 	int level;
 
-	if (value == LED_OFF)
+	if (value == LED_OFF) {
 		level = 0;
-	else
+		if (led_dat->regulator)
+			regulator_disable(led_dat->regulator);
+	} else {
 		level = 1;
+		if (led_dat->regulator)
+			regulator_enable(led_dat->regulator);
+	}
 
 	if (led_dat->active_low)
 		level = !level;
@@ -127,6 +135,12 @@ static int __devinit create_gpio_led(const struct gpio_led *template,
 	led_dat->cdev.brightness = state ? LED_FULL : LED_OFF;
 	if (!template->retain_state_suspended)
 		led_dat->cdev.flags |= LED_CORE_SUSPENDRESUME;
+
+	led_dat->regulator = regulator_get(parent, template->regulator);
+	if (IS_ERR_OR_NULL(led_dat->regulator)) {
+		printk(KERN_INFO "%s: Unable to get regulator\n", __func__);
+		led_dat->regulator = NULL;
+	}
 
 	ret = gpio_direction_output(led_dat->gpio, led_dat->active_low ^ state);
 	if (ret < 0)

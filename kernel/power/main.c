@@ -132,6 +132,15 @@ power_attr(pm_test);
 
 #endif /* CONFIG_PM_SLEEP */
 
+#ifdef CONFIG_PM_DEEPSLEEP
+static int pm_deepsleep_enabled;
+int get_deepsleep_mode(void)
+{
+	return pm_deepsleep_enabled;
+}
+EXPORT_SYMBOL(get_deepsleep_mode);
+#endif
+
 struct kobject *power_kobj;
 
 /**
@@ -180,6 +189,9 @@ static ssize_t state_store(struct kobject *kobj, struct kobj_attribute *attr,
 	char *p;
 	int len;
 	int error = -EINVAL;
+#ifdef CONFIG_PM_DEEPSLEEP
+	char temp[20];
+#endif
 
 	p = memchr(buf, '\n', n);
 	len = p ? p - buf : n;
@@ -190,11 +202,43 @@ static ssize_t state_store(struct kobject *kobj, struct kobj_attribute *attr,
   goto Exit;
 	}
 
+#ifdef CONFIG_PM_DEEPSLEEP
+	if (sizeof(temp) - 1 < len) {
+		len = sizeof(temp)-1;
+		printk(KERN_ERR "pm states is invalid\n");
+	}
+	memset(temp, 0, sizeof(temp));
+	strncpy(temp, buf, len);
+
+	if (len == 9 && !strncmp(temp, "deepsleep", len)) {
+		s = &pm_states[PM_SUSPEND_MEM];
+		if (strlen(*s) > sizeof(temp) - 1) {
+			printk(KERN_ERR "pm states overflow\n");
+		} else {
+			memset(temp, 0, sizeof(temp));
+			strncpy(temp, *s, strlen(*s));
+			pm_deepsleep_enabled = 1;
+		}
+	} else if (pm_deepsleep_enabled == 1 && len == 2
+			&& !strncmp(temp, "on", len)) {
+		pm_deepsleep_enabled = 0;
+	}
+#endif
+
+
 #ifdef CONFIG_SUSPEND
+#ifdef CONFIG_PM_DEEPSLEEP
+	for (s = &pm_states[state]; state < PM_SUSPEND_MAX; s++, state++) {
+		if (*s && len == strlen(*s) && !strncmp(temp, *s, len))
+			break;
+	}
+#else
+
 	for (s = &pm_states[state]; state < PM_SUSPEND_MAX; s++, state++) {
 		if (*s && len == strlen(*s) && !strncmp(buf, *s, len))
 			break;
 	}
+#endif
 	if (state < PM_SUSPEND_MAX && *s)
 #ifdef CONFIG_EARLYSUSPEND
 		if (state == PM_SUSPEND_ON || valid_state(state)) {
@@ -356,6 +400,11 @@ static int __init pm_init(void)
 	int error = pm_start_workqueue();
 	if (error)
 		return error;
+
+#ifdef CONFIG_PM_DEEPSLEEP
+	pm_deepsleep_enabled = 0;
+#endif
+
 	hibernate_image_size_init();
 	hibernate_reserved_size_init();
 	power_kobj = kobject_create_and_add("power", NULL);

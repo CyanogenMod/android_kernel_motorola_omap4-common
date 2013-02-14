@@ -406,6 +406,14 @@ config OMAP_FIQ_DEBUGGER
 	help
 	  Enables the serial FIQ debugger on OMAP"
 
+config PM_DEEPSLEEP
+	bool "instant on feature"
+	depends on ARCH_OMAP4
+	default n
+	help
+	  If enabling this feature, when PM state is set to DEEPSLEEP, the
+	  kernel ignore all key press except long press power key.
+
 config OMAP_REBOOT_REASON
 	depends on ARCH_OMAP4
 	bool

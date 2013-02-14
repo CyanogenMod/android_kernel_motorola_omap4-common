@@ -564,6 +564,7 @@ source "drivers/misc/ti-st/Kconfig"
 source "drivers/misc/lis3lv02d/Kconfig"
 source "drivers/misc/carma/Kconfig"
 source "drivers/misc/sec/Kconfig"
+source "drivers/misc/radio_ctrl/Kconfig"
 source "drivers/misc/ts27010mux/Kconfig"
 source "drivers/misc/gc-core/Kconfig"
 

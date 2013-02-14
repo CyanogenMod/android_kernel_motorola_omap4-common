@@ -57,5 +57,6 @@ obj-$(CONFIG_TWL6040_VIB)	+= twl6040-vib.o
 obj-$(CONFIG_SEC_DRIVER)	+= sec/
 obj-$(CONFIG_OMAP_DEV_TYPE_DRV) += omap_dev_type.o
 obj-$(CONFIG_FEAT_TD_TS27010MUX)	+= pnx6718_mux/
+obj-y                           += radio_ctrl/
 obj-y				+= ts27010mux/
 obj-$(CONFIG_GC_CORE)		+= gc-core/

@@ -44,6 +44,13 @@ obj-$(CONFIG_LEDS_NS2)			+= leds-ns2.o
 obj-$(CONFIG_LEDS_NETXBIG)		+= leds-netxbig.o
 obj-$(CONFIG_LEDS_OMAP4430_SDP_DISPLAY)	+= leds-omap4430sdp-display.o
 obj-$(CONFIG_LEDS_OMAP4430_SDP_KEYPAD)	+= leds-omap4430sdp-keypad.o
+obj-$(CONFIG_LEDS_CPCAP)		+= leds-cpcap-adb.o \
+					   leds-cpcap-bt.o \
+					   leds-cpcap-cp.o \
+					   leds-cpcap-gpio.o \
+					   leds-cpcap-kpb.o \
+					   leds-cpcap-mdb.o \
+					   leds-cpcap-rgb.o
 
 # LED SPI Drivers
 obj-$(CONFIG_LEDS_DAC124S085)		+= leds-dac124s085.o

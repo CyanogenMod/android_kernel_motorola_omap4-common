@@ -369,6 +369,18 @@ config LEDS_MC13783
 	  This option enable support for on-chip LED drivers found
 	  on Freescale Semiconductor MC13783 PMIC.
 
+config LEDS_CPCAP
+	tristate "LED Support for CPCAP device"
+	depends on LEDS_CLASS && MFD_CPCAP
+	help
+	  This option enables support for LEDs on CPCAP.
+
+config LEDS_FLASH_RESET
+	tristate "LED Support for FLASH_RESET pin control"
+	depends on LEDS_CLASS && LEDS_BD7885
+	help
+	  This option enables support for LED's FLASH_RESET pin operation.
+
 config LEDS_OMAP4430_SDP_DISPLAY
 	bool "Display LED support for OMAP4430 SDP"
 	depends on LEDS_CLASS

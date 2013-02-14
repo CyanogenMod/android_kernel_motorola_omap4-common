@@ -47,6 +47,7 @@ obj-$(CONFIG_LEDS_OMAP4430_SDP_DISPLAY)	+= leds-omap4430sdp-display.o
 obj-$(CONFIG_LEDS_OMAP4430_SDP_KEYPAD)	+= leds-omap4430sdp-keypad.o
 obj-$(CONFIG_LEDS_LM3530)		+= led-lm3530.o
 obj-$(CONFIG_LEDS_LM3554)		+= led-cpcap-lm3554.o
+obj-$(CONFIG_LEDS_LM3559)		+= led-cpcap-lm3559.o
 obj-$(CONFIG_LEDS_CPCAP)		+= leds-cpcap-adb.o \
 					   leds-cpcap-bt.o \
 					   leds-cpcap-cp.o \

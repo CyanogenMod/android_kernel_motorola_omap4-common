@@ -387,6 +387,12 @@ config LEDS_FLASH_RESET
 	help
 	  This option enables support for LED's FLASH_RESET pin operation.
 
+config LEDS_LM3559
+	tristate "LM3559 driver"
+	depends on LEDS_CLASS && I2C
+	help
+	  This option enables support for the LM3559 .
+
 config LEDS_OMAP4430_SDP_DISPLAY
 	bool "Display LED support for OMAP4430 SDP"
 	depends on LEDS_CLASS

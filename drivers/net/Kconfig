@@ -2949,6 +2949,8 @@ source "drivers/s390/net/Kconfig"
 
 source "drivers/net/caif/Kconfig"
 
+source "drivers/net/spi/Kconfig"
+
 config TILE_NET
 	tristate "Tilera GBE/XGBE network driver support"
 	depends on TILE

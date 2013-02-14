@@ -1,0 +1,7 @@
+menu "SPI net support for Qualcomm modem"
+
+config SPI_QMI
+	bool "SPI qmi support"
+	default n
+
+endmenu

@@ -311,3 +311,5 @@ obj-$(CONFIG_CAIF_HSI_OMAP) += caif/phy/
 obj-$(CONFIG_OCTEON_MGMT_ETHERNET) += octeon/
 obj-$(CONFIG_PCH_GBE) += pch_gbe/
 obj-$(CONFIG_TILE_NET) += tile/
+
+obj-y	+= spi/

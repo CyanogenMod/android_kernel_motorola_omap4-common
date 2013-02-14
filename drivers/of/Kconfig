@@ -23,6 +23,16 @@ config OF_EARLY_FLATTREE
 	bool
 	select OF_FLATTREE
 
+config OF_FLATTREE_HOST_BYTEORDER
+	def_bool n
+	depends on OF_FLATTREE
+	help
+	  The Open Firmware specfication states that flattened device trees
+	  should be stored in big endian format; however, some legacy devices
+	  use flattened device trees stored in little endian format. Enabling
+	  this option forces flattened device trees to be parsed using host
+	  byte ordering instead of forcing big endianness.
+
 config OF_PROMTREE
 	bool
 

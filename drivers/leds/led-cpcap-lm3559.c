@@ -27,6 +27,8 @@
 #include <linux/spi/cpcap.h>
 #include <linux/spi/cpcap-regbits.h>
 
+#include <linux/slab.h>
+
 #define LM3559_ALLOWED_R_BYTES 1
 #define LM3559_ALLOWED_W_BYTES 2
 #define LM3559_MAX_RW_RETRIES 5

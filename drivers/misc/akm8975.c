@@ -300,35 +300,33 @@ static int AKECS_GetData(char *rbuf, int size)
 		}
 		return -1;
 	}
+#ifdef CONFIG_MACH_MAPPHONE_SOLANA
+	char tempBuf[SENSOR_DATA_SIZE];
+	char temp;
 
-	if(solana_flag){
-		char tempBuf[SENSOR_DATA_SIZE];
-		char temp;
-		
-		mutex_lock(&sense_data_mutex);
-		memcpy(tempBuf, sense_data, size);
-		atomic_set(&data_ready, 0);
-		mutex_unlock(&sense_data_mutex);
-		
-		temp = tempBuf[1];
-		tempBuf[1] = tempBuf[3];
-		tempBuf[3] = temp;
-		
-		temp = tempBuf[2];
-		tempBuf[2] = tempBuf[4];
-		tempBuf[4] = temp;
-		
-		tempBuf[5] = 255 - tempBuf[5] ;
-		tempBuf[6] = tempBuf[6] ^ 255;
-		
-		memcpy(rbuf, tempBuf, size);
-	}
-	else {
-		mutex_lock(&sense_data_mutex);
-		memcpy(rbuf, sense_data, size);
-		atomic_set(&data_ready, 0);
-		mutex_unlock(&sense_data_mutex);
-	}
+	mutex_lock(&sense_data_mutex);
+	memcpy(tempBuf, sense_data, size);
+	atomic_set(&data_ready, 0);
+	mutex_unlock(&sense_data_mutex);
+
+	temp = tempBuf[1];
+	tempBuf[1] = tempBuf[3];
+	tempBuf[3] = temp;
+
+	temp = tempBuf[2];
+	tempBuf[2] = tempBuf[4];
+	tempBuf[4] = temp;
+
+	tempBuf[5] = 255 - tempBuf[5] ;
+	tempBuf[6] = tempBuf[6] ^ 255;
+
+	memcpy(rbuf, tempBuf, size);
+#else
+	mutex_lock(&sense_data_mutex);
+	memcpy(rbuf, sense_data, size);
+	atomic_set(&data_ready, 0);
+	mutex_unlock(&sense_data_mutex);
+#endif
 
 	failure_count = 0;
 	return 0;

@@ -33,6 +33,7 @@
 #include <plat/omap_device.h>
 #include <mach/ctrl_module_pad_core_44xx.h>
 
+#include "clockdomain.h"
 #include "control.h"
 #include "mux.h"
 
@@ -48,6 +49,7 @@ static struct usbhs_omap_platform_data		usbhs_data;
 static struct ehci_hcd_omap_platform_data	ehci_data;
 static struct ohci_hcd_omap_platform_data	ohci_data;
 static int usbhs_update_sar;
+static struct clockdomain *l3init_clkdm;
 
 static struct omap_device_pm_latency omap_uhhtll_latency[] = {
 	  {
@@ -874,8 +876,10 @@ void usbhs_wakeup()
 		int queued;
 		queued = queue_delayed_work(pm_wq, &usbhs_wake->wakeup_work,
 				msecs_to_jiffies(20));
-		if (queued)
+		if (queued) {
+			clkdm_wakeup(l3init_clkdm);
 			pm_runtime_get(usbhs_wake->dev);
+		}
 	}
 }
 
@@ -883,6 +887,7 @@ static void usbhs_resume_work(struct work_struct *work)
 {
 	dev_dbg(usbhs_wake->dev, "USB IO PAD Wakeup event triggered\n");
 	pm_runtime_put(usbhs_wake->dev);
+	clkdm_allow_idle(l3init_clkdm);
 }
 
 void __init usbhs_init(const struct usbhs_omap_board_data *pdata)
@@ -948,6 +953,11 @@ void __init usbhs_init(const struct usbhs_omap_board_data *pdata)
 	if (cpu_is_omap44xx()) {
 		setup_4430ehci_drvstrength(pdata->port_mode);
 		/* TODO - implement for OHCI*/
+	}
+
+	l3init_clkdm = clkdm_lookup("l3_init_clkdm");
+	if (!l3init_clkdm) {
+		pr_err("Failed to get l3_init_clkdm\n");
 	}
 
 	od = omap_device_build_ss(OMAP_USBHS_DEVICE, bus_id, oh, 4,

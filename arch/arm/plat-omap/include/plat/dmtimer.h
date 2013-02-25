@@ -13,6 +13,9 @@
  * Author: Lauri Leukkunen <lauri.leukkunen@nokia.com>
  * PWM and clock framwork support by Timo Teras.
  *
+ * Copyright (C) 2010 Motorola Inc.
+ * API improvements.
+ *
  * This program is free software; you can redistribute it and/or modify it
  * under the terms of the GNU General Public License as published by the
  * Free Software Foundation; either version 2 of the License, or (at your
@@ -137,6 +140,7 @@ int omap_dm_timer_stop(struct omap_dm_timer *timer);
 int omap_dm_timer_set_source(struct omap_dm_timer *timer, int source);
 int omap_dm_timer_set_load(struct omap_dm_timer *timer, int autoreload,
 	unsigned int value);
+void omap_dm_timer_update_load(struct omap_dm_timer *timer, unsigned int value);
 int omap_dm_timer_set_load_start(struct omap_dm_timer *timer,
 	int autoreload, unsigned int value);
 int omap_dm_timer_set_match(struct omap_dm_timer *timer, int enable,
@@ -155,6 +159,7 @@ int omap_dm_timer_write_counter(struct omap_dm_timer *timer,
 	unsigned int value);
 
 int omap_dm_timers_active(void);
+void omap_dm_timer_invalidate_saved_context(struct omap_dm_timer *);
 
 
 #endif /* __ASM_ARCH_DMTIMER_H */

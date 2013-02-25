@@ -647,11 +647,9 @@ static int __init clk_disable_unused(void)
 		if (ck->ops == &clkops_null)
 			continue;
 
-		if (ck->usecount > 0 || !ck->enable_reg)
-			continue;
-
 		spin_lock_irqsave(&clockfw_lock, flags);
-		arch_clock->clk_disable_unused(ck);
+		if (!(ck->usecount > 0 || !ck->enable_reg))
+			arch_clock->clk_disable_unused(ck);
 		spin_unlock_irqrestore(&clockfw_lock, flags);
 	}
 

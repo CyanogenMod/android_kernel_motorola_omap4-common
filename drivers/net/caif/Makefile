@@ -3,7 +3,7 @@ ccflags-$(CONFIG_CAIF_DEBUG) := -DDEBUG
 # Serial interface
 ifeq ($(CONFIG_CAIF_TTY_PM), y)
 caif_serial_pm-objs := caif_serial.o
-caif_serial_pm-objs += phy/omap_pm.o
+caif_serial_pm-objs += omap_pm.o
 obj-$(CONFIG_CAIF_TTY) += caif_serial_pm.o
 ccflags-y += -DGPIO_MODEM_AWR=$(CONFIG_CAIF_PHY_GPIO_AWR)
 ccflags-y += -DGPIO_MODEM_CWR=$(CONFIG_CAIF_PHY_GPIO_CWR)
@@ -23,3 +23,5 @@ ccflags-$(CONFIG_WAKELOCK) += -DCONFIG_WAKELOCK
 
 # HSI interface
 obj-$(CONFIG_CAIF_HSI) += caif_hsi.o
+
+obj-y += phy/

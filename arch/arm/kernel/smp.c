@@ -113,6 +113,7 @@ int __cpuinit __cpu_up(unsigned int cpu)
 	/*
 	 * Now bring the CPU into our world.
 	 */
+	preempt_disable();
 	ret = boot_secondary(cpu, idle);
 	if (ret == 0) {
 		unsigned long timeout;
@@ -150,6 +151,11 @@ int __cpuinit __cpu_up(unsigned int cpu)
 	}
 
 	pgd_free(&init_mm, pgd);
+
+	if (ret == 0)
+		set_cpu_active(cpu, true);
+
+	preempt_enable();
 
 	return ret;
 }

@@ -264,10 +264,11 @@ void die(const char *str, struct pt_regs *regs, int err)
 {
 	struct thread_info *thread = current_thread_info();
 	int ret;
+	unsigned long flags;
 
 	oops_enter();
 
-	spin_lock_irq(&die_lock);
+	spin_lock_irqsave(&die_lock, flags);
 	console_verbose();
 	bust_spinlocks(1);
 	ret = __die(str, err, thread, regs);
@@ -277,8 +278,6 @@ void die(const char *str, struct pt_regs *regs, int err)
 
 	bust_spinlocks(0);
 	add_taint(TAINT_DIE);
-	spin_unlock_irq(&die_lock);
-	oops_exit();
 
 	if (in_interrupt())
 		panic("Fatal exception in interrupt");
@@ -286,6 +285,9 @@ void die(const char *str, struct pt_regs *regs, int err)
 		panic("Fatal exception");
 	if (ret != NOTIFY_STOP)
 		do_exit(SIGSEGV);
+
+	spin_unlock_irqrestore(&die_lock, flags);
+	oops_exit();
 }
 
 void arm_notify_die(const char *str, struct pt_regs *regs,

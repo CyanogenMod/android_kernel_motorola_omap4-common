@@ -288,6 +288,7 @@ void machine_power_off(void)
 
 void machine_restart(char *cmd)
 {
+	local_irq_disable();
 	machine_shutdown();
 	arm_pm_restart(reboot_mode, cmd);
 }

@@ -58,10 +58,13 @@ extern void __raw_readsl(const void __iomem *addr, void *data, int longlen);
 /*
  * Architecture ioremap implementation.
  */
-#define MT_DEVICE		0
+#define MT_DEVICE_1		0
 #define MT_DEVICE_NONSHARED	1
 #define MT_DEVICE_CACHED	2
 #define MT_DEVICE_WC		3
+/* Map all MT_DEVICE to StronglyOrdered */
+#define MT_DEVICE		4
+
 /*
  * types 4 onwards can be found in asm/mach/map.h and are undefined
  * for ioremap

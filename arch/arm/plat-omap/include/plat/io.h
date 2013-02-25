@@ -60,6 +60,17 @@
 #define IOMEM(x)		((void __force __iomem *)(x))
 #endif
 
+#ifdef CONFIG_INTERCONNECT_IO_POSTING
+/*
+ * ARM writes to devices are postable.  Further software
+ * sychronization neeed ex: DSB or register read back
+ */
+#define IO_MAP_TYPE    MT_DEVICE
+#else
+/* ARM writes to devices are sychronized */
+#define IO_MAP_TYPE    MT_MEMORY_SO
+#endif
+
 #define OMAP1_IO_OFFSET		0x01000000	/* Virtual IO = 0xfefb0000 */
 #define OMAP1_IO_ADDRESS(pa)	IOMEM((pa) - OMAP1_IO_OFFSET)
 

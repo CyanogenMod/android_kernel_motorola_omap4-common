@@ -193,7 +193,7 @@ void adjust_cr(unsigned long mask, unsigned long set)
 #define PROT_SECT_DEVICE	PMD_TYPE_SECT|PMD_SECT_AP_WRITE
 
 static struct mem_type mem_types[] = {
-	[MT_DEVICE] = {		  /* Strongly ordered / ARMv6 shared device */
+	[MT_DEVICE_1] = {	/* Strongly ordered / ARMv6 shared device */
 		.prot_pte	= PROT_PTE_DEVICE | L_PTE_MT_DEV_SHARED |
 				  L_PTE_SHARED,
 		.prot_l1	= PMD_TYPE_TABLE,

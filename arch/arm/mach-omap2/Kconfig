@@ -406,6 +406,17 @@ config OMAP_FIQ_DEBUGGER
 	help
 	  Enables the serial FIQ debugger on OMAP"
 
+config INTERCONNECT_IO_POSTING
+	bool "Enable bus posting for PIO accesses"
+	depends on ARCH_OMAP34XX || ARCH_OMAP4
+	default n
+	help
+	  This option sets PIO access for internal OMAP3 registers to follow the
+	  ARMv7 DEVICE attribute. For 3430 this will allow posted writes in the
+	  interconnect. Software will need to synchronize writes to ensure
+	  completion. When not set the attribute is Strongly Ordered which is
+	  non-posted on the OMAP3 interconnect.
+
 config PM_DEEPSLEEP
 	bool "instant on feature"
 	depends on ARCH_OMAP4

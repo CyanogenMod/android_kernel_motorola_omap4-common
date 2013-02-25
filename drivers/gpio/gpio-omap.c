@@ -34,6 +34,8 @@
 #include "../mux.h"
 
 static LIST_HEAD(omap_gpio_list);
+static LIST_HEAD(gpios_list);
+static DEFINE_MUTEX(gpios_mutex);
 
 struct gpio_regs {
 	u32 irqenable1;
@@ -97,6 +99,17 @@ struct gpio_bank {
 	struct omap_gpio_reg_offs *regs;
 
 	struct omap_mux *mux[32];
+};
+
+#define OMAP4_IOMUX_WAKEUPEVENT_MASK	0x8000
+#define OMAP4_IOMUX_WAKEUPEN_MASK	0x4000
+#define REG_BITS			32
+
+struct omap_gpio_mux_map {
+	u32 gpio;
+	u32 base;
+	u32 offset;
+	struct list_head next;
 };
 
 static void omap_gpio_mod_init(struct gpio_bank *bank);
@@ -1417,6 +1430,7 @@ static int omap_gpio_pm_runtime_resume(struct device *dev)
 	struct gpio_bank *bank = platform_get_drvdata(pdev);
 	u32 l = 0, gen, gen0, gen1;
 	int j;
+	struct omap_gpio_mux_map *gpio_map;
 	unsigned long pad_wakeup;
 	int i;
 
@@ -1440,7 +1454,20 @@ static int omap_gpio_pm_runtime_resume(struct device *dev)
 	 * horribly racy, but it's the best we can do to work around
 	 * this silicon bug. */
 	l ^= bank->saved_datain;
+
 	l &= bank->enabled_non_wakeup_gpios;
+
+	/* Force trigger irq if wakeup from it */
+	list_for_each_entry(gpio_map, &gpios_list, next) {
+		if ((gpio_map->gpio / REG_BITS) == bank->id) {
+			u16 val = omap_readw(gpio_map->base
+					+ gpio_map->offset);
+
+			if ((val & OMAP4_IOMUX_WAKEUPEVENT_MASK)
+					&& (val & OMAP4_IOMUX_WAKEUPEN_MASK))
+				l |= 1 << (gpio_map->gpio % REG_BITS);
+		}
+	}
 
 	pad_wakeup = bank->enabled_non_wakeup_gpios;
 	for_each_set_bit(i, &pad_wakeup, bank->width)
@@ -1470,19 +1497,14 @@ static int omap_gpio_pm_runtime_resume(struct device *dev)
 		old1 = __raw_readl(bank->base +
 					bank->regs->leveldetect1);
 
-		__raw_writel(old0, bank->base +
-					bank->regs->leveldetect0);
-		__raw_writel(old1, bank->base +
-					bank->regs->leveldetect1);
 		if (cpu_is_omap24xx() || cpu_is_omap34xx()) {
-			old0 |= gen;
-			old1 |= gen;
+			l = gen;
 		}
 
-		if (cpu_is_omap44xx()) {
-			old0 |= l;
-			old1 |= l;
-		}
+		__raw_writel(old0 | l, bank->base +
+					bank->regs->leveldetect0);
+		__raw_writel(old1 | l, bank->base +
+					bank->regs->leveldetect1);
 		__raw_writel(old0, bank->base +
 					bank->regs->leveldetect0);
 		__raw_writel(old1, bank->base +
@@ -1705,6 +1727,53 @@ void omap_gpio_restore_context(struct gpio_bank *bank)
 				bank->base + bank->regs->irqenable2);
 	bank->saved_context = 0;
 }
+
+/* Add software trigger waken gpio */
+void gpio_force_irq_add(u8 gpio, u32 base, u32 offset)
+{
+	struct omap_gpio_mux_map *gpio_map = NULL;
+	struct omap_gpio_mux_map *pos;
+
+	list_for_each_entry(pos, &gpios_list, next) {
+		if (pos->gpio == gpio) {
+			gpio_map = pos;
+			break;
+		}
+	}
+
+	if (!gpio_map) {
+		gpio_map = kmalloc(sizeof(struct omap_gpio_mux_map),
+					GFP_KERNEL);
+		if (!gpio_map) {
+			pr_err("%s: kmalloc failed\n", __func__);
+			return;
+		}
+		gpio_map->gpio = gpio;
+		mutex_lock(&gpios_mutex);
+		list_add(&gpio_map->next, &gpios_list);
+		mutex_unlock(&gpios_mutex);
+	}
+
+	gpio_map->base = base;
+	gpio_map->offset = offset;
+}
+
+/* Delete software trigger waken gpio */
+void gpio_force_irq_del(u8 gpio)
+{
+	struct omap_gpio_mux_map *pos, *_pos;
+
+	list_for_each_entry_safe(pos, _pos, &gpios_list, next) {
+		if (pos->gpio == gpio) {
+			mutex_lock(&gpios_mutex);
+			list_del(&pos->next);
+			mutex_unlock(&gpios_mutex);
+			kfree(pos);
+			break;
+		}
+	}
+}
+
 #endif
 
 static const struct dev_pm_ops gpio_pm_ops = {

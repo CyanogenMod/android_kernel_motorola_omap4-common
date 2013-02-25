@@ -217,6 +217,8 @@ extern int omap2_gpio_prepare_for_idle(int off_mode, bool suspend);
 extern void omap2_gpio_resume_after_idle(int off_mode);
 extern void omap_set_gpio_debounce(int gpio, int enable);
 extern void omap_set_gpio_debounce_time(int gpio, int enable);
+extern void gpio_force_irq_add(u8 gpio, u32 base, u32 offset);
+extern void gpio_force_irq_del(u8 gpio);
 /*-------------------------------------------------------------------------*/
 
 /* Wrappers for "new style" GPIO calls, using the new infrastructure

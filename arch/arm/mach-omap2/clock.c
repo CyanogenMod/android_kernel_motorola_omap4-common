@@ -44,9 +44,9 @@ u8 cpu_mask;
 
 /* Private functions */
 
-static void _omap4_module_wait_ready(struct clk *clk)
+static int _omap4_module_wait_ready(struct clk *clk)
 {
-	omap4_cm_wait_module_ready(clk->enable_reg);
+	return omap4_cm_wait_module_ready(clk->enable_reg);
 }
 
 /**
@@ -181,6 +181,7 @@ void omap2_clk_dflt_find_idlest(struct clk *clk, void __iomem **idlest_reg,
 int omap2_dflt_clk_enable(struct clk *clk)
 {
 	u32 v;
+	int r = 0;
 
 	if (unlikely(clk->enable_reg == NULL)) {
 		pr_err("clock.c: Enable for %s without enable code\n",
@@ -198,12 +199,12 @@ int omap2_dflt_clk_enable(struct clk *clk)
 
 	if (clk->ops->find_idlest) {
 		if (cpu_is_omap44xx())
-			_omap4_module_wait_ready(clk);
+			r = _omap4_module_wait_ready(clk);
 		else
 			_omap2_module_wait_ready(clk);
 	}
 
-	return 0;
+	return r;
 }
 
 void omap2_dflt_clk_disable(struct clk *clk)

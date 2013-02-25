@@ -1623,6 +1623,9 @@ static struct clk dss_dss_clk = {
 	.enable_reg	= OMAP4430_CM_DSS_DSS_CLKCTRL,
 	.enable_bit	= OMAP4430_OPTFCLKEN_DSSCLK_SHIFT,
 	.clkdm_name	= "l3_dss_clkdm",
+#ifdef CONFIG_FB_OMAP_BOOTLOADER_INIT
+	.flags		= ENABLE_ON_INIT,
+#endif
 	.parent		= &dpll_per_m5x2_ck,
 	.recalc		= &followparent_recalc,
 	.speculate	= &omap2_clksel_speculate,
@@ -3642,7 +3645,7 @@ static struct omap_clk omap44xx_clks[] = {
 	CLK("usbhs_omap",	"usbhost_ick",		&dummy_ck,		CK_44XX),
 	CLK(NULL,	"otg_60m_gfclk",		&otg_60m_gfclk,	CK_44XX),
 	CLK(NULL,	"usb_otg_hs_xclk",		&usb_otg_hs_xclk,	CK_44XX),
-	CLK("musb-omap2430",	"ick",				&usb_otg_hs_ick,	CK_44XX),
+	CLK("musb-hdrc",	"ick",					&usb_otg_hs_ick,	CK_44XX),
 	CLK(NULL,	"usb_phy_cm_clk32k",		&usb_phy_cm_clk32k,	CK_44XX),
 	CLK(NULL,	"usb_tll_hs_usb_ch2_clk",	&usb_tll_hs_usb_ch2_clk,	CK_44XX),
 	CLK(NULL,	"usb_tll_hs_usb_ch0_clk",	&usb_tll_hs_usb_ch0_clk,	CK_44XX),

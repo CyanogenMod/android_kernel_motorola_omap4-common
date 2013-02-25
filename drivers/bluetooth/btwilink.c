@@ -112,6 +112,11 @@ static long st_receive(void *priv_data, struct sk_buff *skb)
 	err = hci_recv_frame(skb);
 	if (err < 0) {
 		BT_ERR("Unable to push skb to HCI core(%d)", err);
+		/* Since the hci_recv_frame, fails at only 1 point in which
+		 * case it does free the skb, there is no point in conveying
+		 * that the recv has failed, because the ST need not free the
+		 * skb - So sending success in this case too.
+		 return err;*/
 		return 0;
 	}
 
@@ -258,11 +263,19 @@ static int ti_st_send_frame(struct sk_buff *skb)
 	long len;
 
 	hdev = (struct hci_dev *)skb->dev;
+	if (!hdev) {
+		BT_ERR("skb has invalid device\n");
+		return -ENODEV;
+	}
 
 	if (!test_bit(HCI_RUNNING, &hdev->flags))
 		return -EBUSY;
 
 	hst = hdev->driver_data;
+	if (!hst || !hst->st_write) {
+		BT_ERR("invalid reference to ti-st\n");
+		return -EIO;
+	}
 
 	/* Prepend skb with frame type */
 	memcpy(skb_push(skb, 1), &bt_cb(skb)->pkt_type, 1);

@@ -64,6 +64,10 @@ static int omap4_pwrdm_read_prev_pwrst(struct powerdomain *pwrdm)
 {
 	u32 v;
 
+	if (cpu_is_omap443x() &&
+		(!(pwrdm->flags & PWRDM_HAS_LASTPOWERSTATEENT)))
+		return -EINVAL;
+
 	v = omap4_prminst_read_inst_reg(pwrdm->prcm_partition, pwrdm->prcm_offs,
 					OMAP4_PM_PWSTST);
 	v &= OMAP4430_LASTPOWERSTATEENTERED_MASK;

@@ -749,6 +749,11 @@ static irqreturn_t armv7pmu_handle_irq(int irq_num, void *dev)
 	int idx;
 
 	/*
+	 * ACK CTI interrupt
+	 */
+	pmu_ack_cti_int();
+
+	/*
 	 * Get and reset the IRQ flags
 	 */
 	pmnc = armv7_pmnc_getreset_flags();

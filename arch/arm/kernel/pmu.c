@@ -125,6 +125,15 @@ init_cpu_pmu(void)
 			break;
 	}
 
+	/*
+	 * Route PMU interrupt to CTI module
+	 */
+	if (i == pdev->num_resources)
+		pmu_l3clk_init();
+
+	for (i = 0; i < pdev->num_resources; ++i)
+		pmu_cti_init(i);
+
 	return err;
 }
 

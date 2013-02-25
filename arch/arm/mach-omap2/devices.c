@@ -595,10 +595,33 @@ static struct resource omap3_pmu_resource = {
 	.flags	= IORESOURCE_IRQ,
 };
 
+#ifdef CONFIG_PMU_DEP_CTI
+#define OMAP44XX_IRQ_PMU_CPU0 OMAP44XX_IRQ_CTI0
+#define OMAP44XX_IRQ_PMU_CPU1 OMAP44XX_IRQ_CTI1
+
+static struct resource omap4_pmu_resource[] = {
+	[0] = {
+		.start          = OMAP44XX_IRQ_PMU_CPU0,
+		.end            = OMAP44XX_IRQ_PMU_CPU0,
+		.flags          = IORESOURCE_IRQ,
+	},
+	[1] = {
+		.start          = OMAP44XX_IRQ_PMU_CPU1,
+		.end            = OMAP44XX_IRQ_PMU_CPU1,
+		.flags          = IORESOURCE_IRQ,
+	},
+};
+
+#endif
+
 static struct platform_device omap_pmu_device = {
 	.name		= "arm-pmu",
 	.id		= ARM_PMU_DEVICE_CPU,
+#ifdef CONFIG_PMU_DEP_CTI
+	.num_resources  = ARRAY_SIZE(omap4_pmu_resource),
+#else
 	.num_resources	= 1,
+#endif
 };
 
 static void omap_init_pmu(void)
@@ -607,6 +630,10 @@ static void omap_init_pmu(void)
 		omap_pmu_device.resource = &omap2_pmu_resource;
 	else if (cpu_is_omap34xx())
 		omap_pmu_device.resource = &omap3_pmu_resource;
+#ifdef CONFIG_PMU_DEP_CTI
+	else if (cpu_is_omap44xx())
+		omap_pmu_device.resource = omap4_pmu_resource;
+#endif
 	else
 		return;
 

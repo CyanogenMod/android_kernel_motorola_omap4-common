@@ -64,6 +64,16 @@ release_pmu(struct platform_device *pdev);
 extern int
 init_pmu(enum arm_pmu_type device);
 
+#ifdef CONFIG_PMU_DEP_CTI
+extern void pmu_ack_cti_int(void);
+extern void pmu_l3clk_init(void);
+extern void pmu_cti_init(int cpu);
+#else
+static inline void pmu_ack_cti_int(void) {}
+static inline void pmu_l3clk_init(void) {}
+static inline void pmu_cti_init(int cpu) {}
+#endif
+
 #else /* CONFIG_CPU_HAS_PMU */
 
 #include <linux/err.h>

@@ -1552,6 +1552,16 @@ config HW_PERF_EVENTS
 	  Enable hardware performance counter support for perf events. If
 	  disabled, perf events will use software events only.
 
+config PMU_DEP_CTI
+	bool "Route PMU interrupt to CTI module"
+	depends on CPU_HAS_PMU && ARCH_OMAP4 && HW_PERF_EVENTS
+	default n
+	help
+	  Enable PMU interrupt on OMAP4 by routing irq to CTI module, hardware
+	  performance counter could not be supported on OMAP4 if disabled.
+
+	  If enable oprofile on OMAP4, say y.
+
 source "mm/Kconfig"
 
 config FORCE_MAX_ZONEORDER

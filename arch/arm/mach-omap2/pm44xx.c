@@ -1023,6 +1023,7 @@ static void __init prcm_setup_regs(void)
 	omap4_prminst_write_inst_reg(val, OMAP4430_SCRM_PARTITION, 0x0,
 			OMAP4_SCRM_CLKSETUPTIME_OFFSET);
 
+#ifdef CONFIG_MOT_ENG_PHONE_RESET
 	/*
 	 * Setup OMAP WARMRESET time:
 	 * we use the sum of each voltage domain setup times to handle
@@ -1041,6 +1042,7 @@ static void __init prcm_setup_regs(void)
 			OMAP4430_PRM_PARTITION, OMAP4430_PRM_DEVICE_INST,
 			OMAP4_PRM_RSTTIME_OFFSET);
 	}
+#endif
 
 	/* Setup max PMIC startup time */
 	omap_pm_get_pmic_lp_time(&tstart, &tshut);

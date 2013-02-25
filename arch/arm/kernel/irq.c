@@ -78,6 +78,19 @@ asm_do_IRQ(unsigned int irq, struct pt_regs *regs)
 {
 	struct pt_regs *old_regs = set_irq_regs(regs);
 
+#ifdef CONFIG_MOT_ENG_PHONE_RESET
+	/* Disable interrupt in oops progress
+	 * on eng/debug build.
+	 */
+	if (oops_in_progress && !smp_processor_id()) {
+		set_irq_regs(old_regs);
+		local_irq_disable();
+		printk(KERN_ERR "In oops,"
+			" interrupt is disabled on IRQ%u\n", irq);
+		return;
+	}
+#endif
+
 	irq_enter();
 
 	/*

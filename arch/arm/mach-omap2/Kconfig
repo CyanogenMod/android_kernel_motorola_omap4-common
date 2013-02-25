@@ -425,6 +425,12 @@ config PM_DEEPSLEEP
 	  If enabling this feature, when PM state is set to DEEPSLEEP, the
 	  kernel ignore all key press except long press power key.
 
+config MOT_ENG_PHONE_RESET
+        bool "Set reset mode for engineering phone"
+        default n
+        help
+          Select this option to set dedicated reset mode for engineering phone.
+
 config OMAP_REBOOT_REASON
 	depends on ARCH_OMAP4
 	bool

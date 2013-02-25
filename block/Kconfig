@@ -89,6 +89,13 @@ config BLK_DEV_THROTTLING
 
 	See Documentation/cgroups/blkio-controller.txt for more information.
 
+config DISK_MAX_PARTS
+	int "Maximum number of Partitions (1-256)"
+	range 1 256
+	default "256"
+	---help---
+	Maximum number of Partitions per block device
+
 endif # BLOCK
 
 config BLOCK_COMPAT

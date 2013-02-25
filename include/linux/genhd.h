@@ -56,7 +56,11 @@ enum {
 	UNIXWARE_PARTITION = 0x63,	/* Same as GNU_HURD and SCO Unix */
 };
 
+#if defined(CONFIG_DISK_MAX_PARTS)
+#define DISK_MAX_PARTS			CONFIG_DISK_MAX_PARTS
+#else
 #define DISK_MAX_PARTS			256
+#endif
 #define DISK_NAME_LEN			32
 
 #include <linux/major.h>

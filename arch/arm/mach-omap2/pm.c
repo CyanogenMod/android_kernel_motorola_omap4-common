@@ -256,7 +256,7 @@ int omap_set_pwrdm_state(struct powerdomain *pwrdm, u32 state)
 	}
 
 	cur_state = pwrdm_read_next_pwrst(pwrdm);
-	if (cur_state == state)
+	if (cur_state == state && state == pwrdm_read_pwrst(pwrdm))
 		return ret;
 
 	if (pwrdm_read_pwrst(pwrdm) < PWRDM_POWER_ON) {

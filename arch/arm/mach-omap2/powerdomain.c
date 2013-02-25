@@ -178,6 +178,8 @@ static int _pwrdm_state_switch(struct powerdomain *pwrdm, int flag)
 		break;
 	case PWRDM_STATE_PREV:
 		prev = pwrdm_read_prev_pwrst(pwrdm);
+		if (prev < 0)
+			prev = pwrdm->state;
 		if (pwrdm->state != prev)
 			pwrdm->count.state[prev]++;
 		if (prev == PWRDM_POWER_RET)

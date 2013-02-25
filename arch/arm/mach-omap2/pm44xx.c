@@ -21,6 +21,7 @@
 #include <linux/interrupt.h>
 #include <linux/delay.h>
 #include <linux/irq.h>
+#include <linux/regulator/driver.h>
 #include <linux/regulator/machine.h>
 
 #include <asm/hardware/gic.h>
@@ -211,12 +212,11 @@ void omap4_enter_sleep(unsigned int cpu, unsigned int power_state, bool suspend)
 		if (omap_sr_disable_reset_volt(mpu_voltdm))
 			goto abort_device_off;
 
-		omap_sr_disable_reset_volt(mpu_voltdm);
 		omap_vc_set_auto_trans(mpu_voltdm,
 			OMAP_VC_CHANNEL_AUTO_TRANSITION_RETENTION);
 	}
 
-	if (core_next_state < PWRDM_POWER_ON) {
+	if (core_next_state < PWRDM_POWER_INACTIVE) {
 		/*
 		 * Note: IVA can hit RET outside of cpuidle and hence this is
 		 * not the right optimal place to enable IVA AUTO RET. But since
@@ -235,6 +235,7 @@ void omap4_enter_sleep(unsigned int cpu, unsigned int power_state, bool suspend)
 		}
 
 		omap_temp_sensor_prepare_idle();
+		omap4_trigger_ioctrl();
 	}
 
 	if (omap4_device_next_state_off()) {
@@ -275,7 +276,7 @@ void omap4_enter_sleep(unsigned int cpu, unsigned int power_state, bool suspend)
 	}
 
 abort_device_off:
-	if (core_next_state < PWRDM_POWER_ON) {
+	if (core_next_state < PWRDM_POWER_INACTIVE) {
 		/* See note above */
 		omap_vc_set_auto_trans(core_voltdm,
 				OMAP_VC_CHANNEL_AUTO_TRANSITION_DISABLE);
@@ -651,18 +652,36 @@ static void omap4_configure_pwrst(bool is_off_mode)
 static int omap4_restore_pwdms_after_suspend(void)
 {
 	struct power_state *pwrst;
-	int cstate, pstate, ret = 0;
+	int cstate, pstate, state, ret = 0;
+
+
+	/* Print the previous power domain states */
+	pr_info("Read Powerdomain states as ...\n");
+	pr_info("0 : OFF, 1 : RETENTION, 2 : ON-INACTIVE, 3 : ON-ACTIVE\n");
 
 	/* Restore next powerdomain state */
 	list_for_each_entry(pwrst, &pwrst_list, node) {
 		cstate = pwrdm_read_pwrst(pwrst->pwrdm);
 		pstate = pwrdm_read_prev_pwrst(pwrst->pwrdm);
-		if (pstate > pwrst->next_state) {
+
+		if (pstate == -EINVAL) {
+			state = cstate;
+			pr_info("Powerdomain (%s) is in state %d\n",
+				pwrst->pwrdm->name, state);
+		} else {
+			state = pstate;
+			pr_info("Powerdomain (%s) entered state %d\n",
+				pwrst->pwrdm->name, state);
+		}
+
+		if (state > pwrst->next_state) {
+#if 0
 			pr_info("Powerdomain (%s) didn't enter "
 			       "target state %d Vs achieved state %d. "
 			       "current state %d\n",
 			       pwrst->pwrdm->name, pwrst->next_state,
 			       pstate, cstate);
+#endif
 			ret = -1;
 		}
 
@@ -670,10 +689,6 @@ static int omap4_restore_pwdms_after_suspend(void)
 			pwrdm_set_logic_retst(pwrst->pwrdm, PWRDM_POWER_RET);
 			continue;
 		}
-
-		/* If state already ON due to h/w dep, don't do anything */
-		if (cstate == PWRDM_POWER_ON)
-			continue;
 
 		/* If we have already achieved saved state, nothing to do */
 		if (cstate == pwrst->saved_state)
@@ -694,6 +709,9 @@ static int omap4_restore_pwdms_after_suspend(void)
 		 */
 		if (pwrst->saved_state > cstate)
 			continue;
+
+		if (pwrst->pwrdm->pwrsts)
+			omap_set_pwrdm_state(pwrst->pwrdm, pwrst->saved_state);
 
 		if (pwrst->pwrdm->pwrsts_logic_ret)
 			pwrdm_set_logic_retst(pwrst->pwrdm,
@@ -742,6 +760,9 @@ static int omap4_pm_suspend(void)
 	omap4_enter_sleep(0, PWRDM_POWER_OFF, true);
 	omap4_print_wakeirq();
 	prcmdebug_dump(PRCMDEBUG_LASTSLEEP);
+#ifdef CONFIG_PM_DEBUG
+	regulator_show_state_noirq(enable_regulator_dump);
+#endif
 
 	/* Disable Device OFF state*/
 	if (off_mode_enabled)
@@ -752,7 +773,7 @@ static int omap4_pm_suspend(void)
 	if (ret)
 		pr_err("Could not enter target state in pm_suspend\n");
 	else
-		pr_err("Successfully put all powerdomains to target state\n");
+		pr_info("Successfully put all powerdomains to target state\n");
 
 	/*
 	 * Restore USB SAR registers only if off mode is enabled
@@ -900,6 +921,9 @@ static int __init pwrdms_setup(struct powerdomain *pwrdm, void *unused)
 	else if (!strcmp(pwrdm->name, "l3init_pwrdm"))
 		/* REVISIT: Remove when EHCI IO wakeup is fixed */
 		ret = _set_pwrdm_state(pwrst, PWRDM_POWER_RET, PWRDM_POWER_RET);
+	else if (!strcmp(pwrdm->name, "dss_pwrdm"))
+		ret = _set_pwrdm_state(pwrst, PWRDM_POWER_INACTIVE,
+			PWRDM_POWER_RET);
 	else
 		ret = _set_pwrdm_state(pwrst, state, logic_state);
 
@@ -1316,7 +1340,9 @@ static int __init omap4_pm_init(void)
 	omap4_pm_setup_errata();
 
 	prcm_setup_regs();
-	syscontrol_setup_regs();
+
+	if (cpu_is_omap446x())
+		syscontrol_setup_regs();
 
 	ret = request_irq(OMAP44XX_IRQ_PRCM,
 			  (irq_handler_t)prcm_interrupt_handler,

@@ -93,6 +93,7 @@ inline void omap3_pm_init_cpuidle(struct cpuidle_params *cpuidle_board_params)
 extern int omap3_pm_get_suspend_state(struct powerdomain *pwrdm);
 extern int omap3_pm_set_suspend_state(struct powerdomain *pwrdm, int state);
 
+extern u32 enable_regulator_dump;
 extern u32 wakeup_timer_seconds;
 extern u32 wakeup_timer_milliseconds;
 extern struct omap_dm_timer *gptimer_wakeup;
@@ -230,6 +231,13 @@ static inline int omap_twl_pmic_update(char *name, u32 old_chip_id,
 {
 	return -EINVAL;
 }
+#endif
+
+#ifdef CONFIG_MACH_MAPPHONE
+extern int omap_fan5355_init(void);
+extern int omap_max8952_init(void);
+extern int omap_cpcap_init(void);
+extern u32 enable_off_mode;
 #endif
 
 #ifdef CONFIG_OMAP_TPS6236X

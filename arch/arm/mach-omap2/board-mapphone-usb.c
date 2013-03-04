@@ -15,7 +15,7 @@
 #include <asm/mach-types.h>
 #include <linux/of.h>
 #include "dt_path.h"
-#include <board-mapphone.h>
+#include "board-mapphone.h"
 #include <mach/hardware.h>
 #include <mach/gpio.h>
 #include <linux/gpio_mapping.h>

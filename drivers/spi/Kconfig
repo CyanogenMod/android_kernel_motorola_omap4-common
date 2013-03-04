@@ -273,6 +273,12 @@ config SPI_OMAP_100K
 	help
 	  OMAP SPI 100K master controller for omap7xx boards.
 
+config SPI_SW_CS
+	boolean "Single channel Master Mode"
+	depends on SPI_OMAP24XX
+	help
+	  This is set to enable Software control of the Chip select.
+
 config SPI_ORION
 	tristate "Orion SPI master (EXPERIMENTAL)"
 	depends on PLAT_ORION && EXPERIMENTAL

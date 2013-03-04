@@ -61,7 +61,8 @@ int omap4_ldo_trim_configure(void)
 	}
 
 	/* OMAP4_CTRL_MODULE_PAD_CORE_CONTROL_EFUSE_1 is reserved for 4470 */
-	if (!cpu_is_omap447x()) {
+	/* FIXME: original code is: if (!cpu_is_omap447x()) */
+	if (cpu_is_omap443x() || cpu_is_omap446x()) {
 		/* For all trimmed and untrimmed write recommended value */
 		val =  0x10 << OMAP4_AVDAC_TRIM_BYTE0_SHIFT;
 		val |=  0x01 << OMAP4_AVDAC_TRIM_BYTE1_SHIFT;

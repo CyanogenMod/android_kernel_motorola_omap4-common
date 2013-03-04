@@ -352,7 +352,8 @@ static int __init omap_serial_early_init(void)
 		if (cmdline_find_option(omap_tty_name)) {
 			omap_uart_con_id = i;
 			oh = omap_uart_hwmod_lookup(i);
-			oh->flags |= HWMOD_INIT_NO_IDLE | HWMOD_INIT_NO_RESET;
+			if (oh != NULL)
+				oh->flags |= HWMOD_INIT_NO_IDLE | HWMOD_INIT_NO_RESET;
 			return 0;
 		}
 	}

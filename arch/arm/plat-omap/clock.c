@@ -647,6 +647,10 @@ static int __init clk_disable_unused(void)
 		if (ck->ops == &clkops_null)
 			continue;
 
+		// Don't disable uart3 clock due to early EMU_UART code
+		if (strcmp(ck->name, "uart3_fck") == 0)
+			continue;
+
 		spin_lock_irqsave(&clockfw_lock, flags);
 		if (!(ck->usecount > 0 || !ck->enable_reg))
 			arch_clock->clk_disable_unused(ck);

@@ -291,6 +291,7 @@ obj-$(CONFIG_MACH_MAPPHONE)		+= board-mapphone.o \
 					   board-mapphone-modem.o \
 					   board-mapphone-vibrator.o \
 					   board-mapphone-bpwake.o \
+					   board-mapphone-emu_uart.o \
 					   board-44xx-identity.o \
 					   hsmmc.o \
 					   omap_phy_internal.o \

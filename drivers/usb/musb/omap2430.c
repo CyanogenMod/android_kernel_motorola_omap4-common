@@ -132,11 +132,12 @@ static int phy_init(void)
 {
 	set_phy_clk(1);
 
+#ifndef CONFIG_EMU_UART_DEBUG
 	if (__raw_readl(ctrl_base + CONTROL_DEV_CONF) & PHY_PD) {
 		__raw_writel(~PHY_PD, ctrl_base + CONTROL_DEV_CONF);
 		msleep(200);
 	}
-
+#endif
 	if (cpu_is_omap44xx()) {
 		if (usb_phy_drive_strength_control())
 			DBG(1, "Eye diagram opening increase setting failed!");

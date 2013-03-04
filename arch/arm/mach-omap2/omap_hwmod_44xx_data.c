@@ -659,7 +659,6 @@ static struct omap_hwmod omap44xx_mpu_private_hwmod = {
  *  emif2
  *  gpmc
  *  gpu
- *  hdq1w
  *  hsi
  *  ocmc_ram
  *  ocp2scp_usb_phy
@@ -2941,6 +2940,70 @@ static struct omap_hwmod omap44xx_gpu_hwmod = {
 	.masters	= omap44xx_gpu_masters,
 	.masters_cnt	= ARRAY_SIZE(omap44xx_gpu_masters),
 	.dev_attr       = &smartreflex_core_dev_attr,
+	.omap_chip	= OMAP_CHIP_INIT(CHIP_IS_OMAP44XX),
+};
+
+/*
+ * 'hdq1w' class
+ * HDQ/1-Wire controller
+ */
+
+static struct omap_hwmod_class_sysconfig omap44xx_hdq1w_sysc = {
+	.rev_offs	= 0x0000,
+	.sysc_offs	= 0x0014,
+	.syss_offs	= 0x0018,
+	.sysc_flags	= (SYSC_HAS_SOFTRESET | SYSC_HAS_AUTOIDLE),
+	.idlemodes	= (SIDLE_FORCE | SIDLE_NO | SIDLE_SMART),
+	.sysc_fields	= &omap_hwmod_sysc_type1,
+};
+
+static struct omap_hwmod_class omap44xx_hdq1w_hwmod_class = {
+	.name = "hdq1w",
+	.sysc = &omap44xx_hdq1w_sysc,
+};
+
+/* hdq1w */
+static struct omap_hwmod omap44xx_hdq1w_hwmod;
+static struct omap_hwmod_irq_info omap44xx_hdq1w_irqs[] = {
+	{ .name = "hdqirq", .irq = OMAP44XX_IRQ_HDQ }, /* 58 */
+};
+
+static struct omap_hwmod_addr_space omap44xx_hdq1w_addrs[] = {
+	{
+		.pa_start	= 0x480b2000,
+		.pa_end		= 0x480b201f,
+		.flags		= ADDR_TYPE_RT
+	},
+};
+
+/* l4_per -> hdq1w */
+static struct omap_hwmod_ocp_if omap44xx_l4_per__hdq1w = {
+	.master		= &omap44xx_l4_per_hwmod,
+	.slave		= &omap44xx_hdq1w_hwmod,
+	.clk		= "l4_div_ck",
+	.addr		= omap44xx_hdq1w_addrs,
+	.addr_cnt	= ARRAY_SIZE(omap44xx_hdq1w_addrs),
+	.user		= OCP_USER_MPU | OCP_USER_SDMA,
+};
+
+/* hdq1w slave ports */
+static struct omap_hwmod_ocp_if *omap44xx_hdq1w_slaves[] = {
+	&omap44xx_l4_per__hdq1w,
+};
+
+static struct omap_hwmod omap44xx_hdq1w_hwmod = {
+	.name		= "hdq1w",
+	.class		= &omap44xx_hdq1w_hwmod_class,
+	.mpu_irqs	= omap44xx_hdq1w_irqs,
+	.mpu_irqs_cnt	= ARRAY_SIZE(omap44xx_hdq1w_irqs),
+	.main_clk	= "hdq1w_fck",
+	.prcm = {
+		.omap4 = {
+			.clkctrl_reg = OMAP4430_CM_L4PER_HDQ1W_CLKCTRL,
+		},
+	},
+	.slaves		= omap44xx_hdq1w_slaves,
+	.slaves_cnt	= ARRAY_SIZE(omap44xx_hdq1w_slaves),
 	.omap_chip	= OMAP_CHIP_INIT(CHIP_IS_OMAP44XX),
 };
 
@@ -6158,7 +6221,8 @@ static __initdata struct omap_hwmod *omap44xx_hwmods[] = {
 
 	/* gpu class */
 	&omap44xx_gpu_hwmod,
-
+	/* hdq class */
+	&omap44xx_hdq1w_hwmod,
 	/* i2c class */
 	&omap44xx_i2c1_hwmod,
 	&omap44xx_i2c2_hwmod,

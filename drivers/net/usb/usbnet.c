@@ -210,6 +210,7 @@ static int init_status (struct usbnet *dev, struct usb_interface *intf)
 		} else {
 			usb_fill_int_urb(dev->interrupt, dev->udev, pipe,
 				buf, maxp, intr_complete, dev, period);
+			dev->interrupt->transfer_flags |= URB_FREE_BUFFER;
 			dev_dbg(&intf->dev,
 				"status ep%din, %d bytes period %d\n",
 				usb_pipeendpoint(pipe), maxp, period);
@@ -231,9 +232,16 @@ void usbnet_skb_return (struct usbnet *dev, struct sk_buff *skb)
 		return;
 	}
 
-	skb->protocol = eth_type_trans (skb, dev->net);
+	if (dev->driver_info->prot_type_trans)
+		skb->protocol = dev->driver_info->prot_type_trans(dev,
+							skb, dev->net);
+	else
+		skb->protocol = eth_type_trans(skb, dev->net);
+
 	dev->net->stats.rx_packets++;
 	dev->net->stats.rx_bytes += skb->len;
+
+	dev->net->last_packet_time = jiffies;
 
 	netif_dbg(dev, rx_status, dev->net, "< rx, len %zu, type 0x%x\n",
 		  skb->len + sizeof (struct ethhdr), skb->protocol);
@@ -255,19 +263,18 @@ EXPORT_SYMBOL_GPL(usbnet_skb_return);
 int usbnet_change_mtu (struct net_device *net, int new_mtu)
 {
 	struct usbnet	*dev = netdev_priv(net);
-	int		ll_mtu = new_mtu + net->hard_header_len;
-	int		old_hard_mtu = dev->hard_mtu;
+	int		hard_mtu = new_mtu + net->hard_header_len;
 	int		old_rx_urb_size = dev->rx_urb_size;
 
 	if (new_mtu <= 0)
 		return -EINVAL;
 	// no second zero-length packet read wanted after mtu-sized packets
-	if ((ll_mtu % dev->maxpacket) == 0)
+	if ((hard_mtu % dev->maxpacket) == 0)
 		return -EDOM;
 	net->mtu = new_mtu;
 
-	dev->hard_mtu = net->mtu + net->hard_header_len;
-	if (dev->rx_urb_size == old_hard_mtu) {
+	dev->hard_mtu = hard_mtu;
+	if (!dev->custom_rx_urb_size) {
 		dev->rx_urb_size = dev->hard_mtu;
 		if (dev->rx_urb_size > old_rx_urb_size)
 			usbnet_unlink_rx_urbs(dev);
@@ -489,6 +496,7 @@ block:
 		if (netif_running (dev->net) &&
 		    !test_bit (EVENT_RX_HALT, &dev->flags)) {
 			rx_submit (dev, urb, GFP_ATOMIC);
+			usb_mark_last_busy(dev->udev);
 			return;
 		}
 		usb_free_urb (urb);
@@ -987,6 +995,8 @@ static void tx_complete (struct urb *urb)
 		if (!(dev->driver_info->flags & FLAG_MULTI_PACKET))
 			dev->net->stats.tx_packets++;
 		dev->net->stats.tx_bytes += entry->length;
+
+		dev->net->last_packet_time = jiffies;
 	} else {
 		dev->net->stats.tx_errors++;
 
@@ -1128,6 +1138,8 @@ netdev_tx_t usbnet_start_xmit (struct sk_buff *skb,
 		netif_stop_queue (net);
 		usbnet_defer_kevent (dev, EVENT_TX_HALT);
 		usb_autopm_put_interface_async(dev->intf);
+		netif_dbg(dev, tx_err, dev->net,
+			"tx: submit urb err %d\n", retval);
 		break;
 	default:
 		usb_autopm_put_interface_async(dev->intf);
@@ -1137,8 +1149,11 @@ netdev_tx_t usbnet_start_xmit (struct sk_buff *skb,
 	case 0:
 		net->trans_start = jiffies;
 		__skb_queue_tail (&dev->txq, skb);
-		if (dev->txq.qlen >= TX_QLEN (dev))
+		if (dev->txq.qlen >= TX_QLEN(dev)) {
 			netif_stop_queue (net);
+			netif_dbg(dev, tx_err, dev->net,
+			  "tx: queue full %d\n", dev->txq.qlen);
+		}
 	}
 	spin_unlock_irqrestore (&dev->txq.lock, flags);
 
@@ -1385,8 +1400,7 @@ usbnet_probe (struct usb_interface *udev, const struct usb_device_id *prod)
 		// else "eth%d" when there's reasonable doubt.  userspace
 		// can rename the link if it knows better.
 		if ((dev->driver_info->flags & FLAG_ETHER) != 0 &&
-		    ((dev->driver_info->flags & FLAG_POINTTOPOINT) == 0 ||
-		     (net->dev_addr [0] & 0x02) == 0))
+		     (net->dev_addr[0] & 0x02) == 0)
 			strcpy (net->name, "eth%d");
 		/* WLAN devices should always be named "wlan%d" */
 		if ((dev->driver_info->flags & FLAG_WLAN) != 0)
@@ -1416,8 +1430,14 @@ usbnet_probe (struct usb_interface *udev, const struct usb_device_id *prod)
 	if (status < 0)
 		goto out3;
 
-	if (!dev->rx_urb_size)
+	/* urb size is equal to hard_mtu value unless the size was set in bind() */
+	if (!dev->rx_urb_size) {
+		dev->custom_rx_urb_size = false;
 		dev->rx_urb_size = dev->hard_mtu;
+	} else {
+		dev->custom_rx_urb_size = true;
+	}
+
 	dev->maxpacket = usb_maxpacket (dev->udev, dev->out, 1);
 
 	if ((dev->driver_info->flags & FLAG_WLAN) != 0)
@@ -1472,6 +1492,7 @@ int usbnet_suspend (struct usb_interface *intf, pm_message_t message)
 		/* don't autosuspend while transmitting */
 		if (dev->txq.qlen && (message.event & PM_EVENT_AUTO)) {
 			spin_unlock_irq(&dev->txq.lock);
+			dev->suspend_count--;
 			return -EBUSY;
 		} else {
 			set_bit(EVENT_DEV_ASLEEP, &dev->flags);
@@ -1509,7 +1530,8 @@ int usbnet_resume (struct usb_interface *intf)
 
 		spin_lock_irq(&dev->txq.lock);
 		while ((res = usb_get_from_anchor(&dev->deferred))) {
-
+			usb_put_urb(res);
+			netdev_dbg(dev->net, "%s has delayed data\n", __func__);
 			skb = (struct sk_buff *)res->context;
 			retval = usb_submit_urb(res, GFP_ATOMIC);
 			if (retval < 0) {

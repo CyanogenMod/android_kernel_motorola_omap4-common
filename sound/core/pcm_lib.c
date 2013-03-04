@@ -1723,6 +1723,9 @@ void snd_pcm_period_elapsed(struct snd_pcm_substream *substream)
 		return;
 	runtime = substream->runtime;
 
+	if (!runtime)
+		return;
+
 	if (runtime->transfer_ack_begin)
 		runtime->transfer_ack_begin(substream);
 

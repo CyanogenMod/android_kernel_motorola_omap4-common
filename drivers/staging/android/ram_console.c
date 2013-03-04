@@ -249,6 +249,7 @@ ram_console_save_old(struct ram_console_buffer *buffer, const char *bootinfo,
 
 static int __is_sys_exception(void)
 {
+#if 0
 	int ret = 0;
 
 	if ((bi_powerup_reason() == PU_REASON_WDOG_AP_RESET) ||
@@ -257,6 +258,8 @@ static int __is_sys_exception(void)
 		ret = 1;
 
 	return ret;
+#endif
+	return 1;
 }
 
 static int __init ram_console_init(struct ram_console_buffer *buffer,

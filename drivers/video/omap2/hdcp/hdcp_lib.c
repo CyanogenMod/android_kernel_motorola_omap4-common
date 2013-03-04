@@ -202,7 +202,11 @@ static int hdcp_lib_initiate_step1(void)
 
 	/* DDC: Read BKSV from RX */
 	if (hdcp_ddc_read(DDC_BKSV_LEN, DDC_BKSV_ADDR , an_ksv_data))
+#ifdef CONFIG_PANEL_MAPPHONE_OMAP4_HDTV
+		return -HDCP_DDC_BKSV_RD_ERR;
+#else
 		return -HDCP_DDC_ERROR;
+#endif
 
 	if (hdcp.pending_disable)
 		return -HDCP_CANCELLED_AUTH;
@@ -645,8 +649,10 @@ int hdcp_lib_step1_start(void)
 
 	DBG("RX mode: %s", hdmi_mode ? "HDMI" : "DVI");
 
+#ifndef CONFIG_PANEL_MAPPHONE_OMAP4_HDTV
 	/* Set AV Mute */
 	hdcp_lib_set_av_mute(AV_MUTE_SET);
+#endif
 
 	/* Must turn encryption off when AVMUTE */
 	hdcp_lib_set_encryption(HDCP_ENC_OFF);

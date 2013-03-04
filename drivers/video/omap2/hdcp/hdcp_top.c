@@ -35,6 +35,10 @@
 struct hdcp hdcp;
 struct hdcp_sha_in sha_input;
 
+#ifdef CONFIG_PANEL_MAPPHONE_OMAP4_HDTV
+static int hdcp_bksv_read_error;
+#endif
+
 /* State machine / workqueue */
 static void hdcp_wq_disable(void);
 static void hdcp_wq_start_authentication(void);
@@ -72,7 +76,11 @@ static DECLARE_WAIT_QUEUE_HEAD(hdcp_down_wait_queue);
 static void hdcp_request_dss(void)
 {
 #ifdef DSS_POWER
+#ifdef CONFIG_PANEL_MAPPHONE_OMAP4_HDTV
+	dss_runtime_get();
+#else
 	hdcp.dss_state = dss_runtime_get();
+#endif
 #endif
 }
 
@@ -105,8 +113,12 @@ int hdcp_user_space_task(int flags)
 static void hdcp_release_dss(void)
 {
 #ifdef DSS_POWER
+#ifdef CONFIG_PANEL_MAPPHONE_OMAP4_HDTV
+	dss_runtime_put();
+#else
 	if (hdcp.dss_state == 0)
 		dss_runtime_put();
+#endif
 #endif
 }
 
@@ -138,7 +150,15 @@ static void hdcp_wq_start_authentication(void)
 	/* Step 1 part 1 (until R0 calc delay) */
 	status = hdcp_lib_step1_start();
 
+#ifdef CONFIG_PANEL_MAPPHONE_OMAP4_HDTV
+	if (status == -HDCP_DDC_BKSV_RD_ERR) {
+		DBG("BKSV Read Failed");
+		hdcp_bksv_read_error = 1;
+		hdcp_wq_authentication_failure();
+	} else if (status == -HDCP_AKSV_ERROR) {
+#else
 	if (status == -HDCP_AKSV_ERROR) {
+#endif
 		hdcp_wq_authentication_failure();
 	} else if (status == -HDCP_CANCELLED_AUTH) {
 		DBG("Authentication step 1 cancelled.");
@@ -242,7 +262,9 @@ static void hdcp_wq_authentication_failure(void)
 
 	hdcp_lib_auto_ri_check(false);
 	hdcp_lib_auto_bcaps_rdy_check(false);
+#ifndef CONFIG_PANEL_MAPPHONE_OMAP4_HDTV
 	hdcp_lib_set_av_mute(AV_MUTE_SET);
+#endif
 	hdcp_lib_set_encryption(HDCP_ENC_OFF);
 
 	hdcp_cancel_work(&hdcp.pending_wq_event);
@@ -263,8 +285,24 @@ static void hdcp_wq_authentication_failure(void)
 		hdcp.hdcp_state = HDCP_AUTHENTICATION_START;
 		hdcp.auth_state = HDCP_STATE_AUTH_FAIL_RESTARTING;
 
+#ifdef CONFIG_PANEL_MAPPHONE_OMAP4_HDTV
+		if (hdcp_bksv_read_error) {
+			/* On a BKSV read error, which basically means the
+			 * attached device does not support HDCP, we want a
+			 * longer delay so we reduce power consumption.
+			 */
+			hdcp.pending_wq_event = hdcp_submit_work(
+						  HDCP_AUTH_REATT_EVENT,
+						  1000 + HDCP_REAUTH_DELAY);
+		} else {
+			hdcp.pending_wq_event = hdcp_submit_work(
+						  HDCP_AUTH_REATT_EVENT,
+						  HDCP_REAUTH_DELAY);
+		}
+#else
 		hdcp.pending_wq_event = hdcp_submit_work(HDCP_AUTH_REATT_EVENT,
 							 HDCP_REAUTH_DELAY);
+#endif
 	} else {
 		printk(KERN_INFO "HDCP: authentication failed - "
 				 "HDCP disabled\n");
@@ -285,6 +323,10 @@ static void hdcp_work_queue(struct work_struct *work)
 	int event = hdcp_w->event;
 
 	mutex_lock(&hdcp.lock);
+
+#ifdef CONFIG_PANEL_MAPPHONE_OMAP4_HDTV
+	hdcp_request_dss();
+#endif
 
 	DBG("hdcp_work_queue() - START - %u hdmi=%d hdcp=%d auth=%d evt= %x %d"
 	    " hdcp_ctrl=%02x",
@@ -411,6 +453,10 @@ static void hdcp_work_queue(struct work_struct *work)
 		(event & 0xFF00) >> 8,
 		event & 0xFF);
 
+#ifdef CONFIG_PANEL_MAPPHONE_OMAP4_HDTV
+	hdcp_release_dss();
+#endif
+
 	mutex_unlock(&hdcp.lock);
 }
 
@@ -473,7 +519,7 @@ static bool hdcp_3des_cb(void)
 	DBG("hdcp_3des_cb() %u", jiffies_to_msecs(jiffies));
 
 	if (!hdcp.hdcp_keys_loaded) {
-		printk(KERN_ERR "%s: hdcp_keys not loaded = %d",
+		printk(KERN_ERR "%s: hdcp_keys not loaded = %d\n",
 		       __func__, hdcp.hdcp_keys_loaded);
 		return false;
 	}
@@ -508,7 +554,16 @@ static void hdcp_start_frame_cb(void)
 
 	hdcp.hpd_low = 0;
 	hdcp.pending_disable = 0;
+
+#ifdef CONFIG_PANEL_MAPPHONE_OMAP4_HDTV
+	if (hdcp.en_ctrl->nb_retry == 0)
+		hdcp.retry_cnt = HDCP_INFINITE_REAUTH;
+	else
+		hdcp.retry_cnt = hdcp.en_ctrl->nb_retry;
+#else
 	hdcp.retry_cnt = hdcp.en_ctrl->nb_retry;
+#endif
+
 	hdcp.pending_start = hdcp_submit_work(HDCP_START_FRAME_EVENT,
 							HDCP_ENABLE_DELAY);
 }
@@ -588,6 +643,27 @@ static long hdcp_enable_ctl(void __user *argp)
 {
 	DBG("hdcp_ioctl() - ENABLE %u", jiffies_to_msecs(jiffies));
 
+#ifdef CONFIG_PANEL_MAPPHONE_OMAP4_HDTV
+	if (!hdcp.hdcp_keys_loaded) {
+		if (hdcp.en_ctrl == 0) {
+			printk(KERN_WARNING "HDCP: NULL key struct pointer\n");
+			return -EFAULT;
+		}
+
+		if (copy_from_user(hdcp.en_ctrl, argp,
+				   sizeof(struct hdcp_enable_control))) {
+			printk(KERN_WARNING "HDCP: Key copying failed\n");
+			return -EFAULT;
+		}
+
+		hdcp.hdcp_keys_loaded = true;
+		if (hdcp.en_ctrl->nb_retry == 0)
+			hdcp.retry_cnt = HDCP_INFINITE_REAUTH;
+		else
+			hdcp.retry_cnt = hdcp.en_ctrl->nb_retry;
+		DBG("HDCP: loaded keys");
+	}
+#else
 	if (hdcp.en_ctrl == 0) {
 		hdcp.en_ctrl =
 			kmalloc(sizeof(struct hdcp_enable_control),
@@ -607,6 +683,7 @@ static long hdcp_enable_ctl(void __user *argp)
 				    "- enable ioctl\n");
 		return -EFAULT;
 	}
+#endif
 
 	/* Post event to workqueue */
 	if (hdcp_submit_work(HDCP_ENABLE_CTL, 0) == 0)
@@ -665,7 +742,7 @@ static long hdcp_wait_event_ctl(void __user *argp)
 	if (copy_from_user(&ctrl, argp,
 			   sizeof(struct hdcp_wait_control))) {
 		printk(KERN_WARNING "HDCP: Error copying from user space"
-				    " - wait ioctl");
+				    " - wait ioctl\n");
 		return -EFAULT;
 	}
 
@@ -680,7 +757,7 @@ static long hdcp_wait_event_ctl(void __user *argp)
 			if (copy_to_user(ctrl.data, &sha_input,
 						sizeof(struct hdcp_sha_in))) {
 				printk(KERN_WARNING "HDCP: Error copying to "
-						    "user space - wait ioctl");
+						    "user space - wait ioctl\n");
 				return -EFAULT;
 			}
 		}
@@ -694,7 +771,7 @@ static long hdcp_wait_event_ctl(void __user *argp)
 	if (copy_to_user(argp, &ctrl,
 			 sizeof(struct hdcp_wait_control))) {
 		printk(KERN_WARNING "HDCP: Error copying to user space -"
-				    " wait ioctl");
+				    " wait ioctl\n");
 		return -EFAULT;
 	}
 
@@ -944,7 +1021,11 @@ static int __init hdcp_init(void)
 	mutex_init(&hdcp.lock);
 
 	mdev.minor = MISC_DYNAMIC_MINOR;
+#ifdef CONFIG_PANEL_MAPPHONE_OMAP4_HDTV
+	mdev.name = "omap-hdcp";
+#else
 	mdev.name = "hdcp";
+#endif
 	mdev.mode = 0666;
 	mdev.fops = &hdcp_fops;
 
@@ -968,6 +1049,16 @@ static int __init hdcp_init(void)
 	hdcp_wait_re_entrance = 0;
 	hdcp.hpd_low = 0;
 
+#ifdef CONFIG_PANEL_MAPPHONE_OMAP4_HDTV
+	hdcp.en_ctrl = kmalloc(sizeof(*hdcp.en_ctrl), GFP_KERNEL);
+	if (!hdcp.en_ctrl) {
+		printk(KERN_ERR "HDCP: can't allocated space for keys\n");
+		goto err_en_ctrl;
+	}
+
+	memset(hdcp.en_ctrl, 0, sizeof(*hdcp.en_ctrl));
+#endif
+
 	spin_lock_init(&hdcp.spinlock);
 
 	init_completion(&hdcp_comp);
@@ -990,11 +1081,19 @@ static int __init hdcp_init(void)
 
 	mutex_unlock(&hdcp.lock);
 
+#ifndef CONFIG_PANEL_MAPPHONE_OMAP4_HDTV
 	hdcp_load_keys();
+#endif
 
 	return 0;
 
 err_add_driver:
+
+#ifdef CONFIG_PANEL_MAPPHONE_OMAP4_HDTV
+	kfree(hdcp.en_ctrl);
+
+err_en_ctrl:
+#endif
 	misc_deregister(&mdev);
 
 err_register:

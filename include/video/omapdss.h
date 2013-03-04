@@ -48,6 +48,13 @@
 #define DISPC_IRQ_FRAMEDONE2		(1 << 22)
 #define DISPC_IRQ_FRAMEDONETV		(1 << 24)
 
+enum omap_dsi_data_type {
+	DSI_DT_PXLSTREAM_16BPP_PACKED = 0x0E,
+	DSI_DT_PXLSTREAM_18BPP_PACKED = 0x1E,
+	DSI_DT_PXLSTREAM_18BPP_LOOSE  = 0x2E,
+	DSI_DT_PXLSTREAM_24BPP_PACKED = 0x3E,
+};
+
 struct omap_dss_device;
 struct omap_overlay_manager;
 
@@ -61,11 +68,27 @@ enum omap_display_type {
 	OMAP_DISPLAY_TYPE_HDMI		= 1 << 5,
 };
 
+enum omap_dsi_te_type {
+	OMAP_DSI_TE_MIPI_PHY	= 0,
+	OMAP_DSI_TE_CMOS_TE_0	= 1
+};
+
+/**
+ * DSI virtual channels
+ */
+enum dsi_virtual_channels {
+	DSI_VC_0 = 0,
+	DSI_VC_1,
+	DSI_VC_2,
+	DSI_VC_3,
+};
+
 enum omap_plane {
 	OMAP_DSS_GFX	= 0,
 	OMAP_DSS_VIDEO1	= 1,
 	OMAP_DSS_VIDEO2	= 2,
 	OMAP_DSS_VIDEO3 = 3,
+	OMAP_DSS_WB	= 4,
 };
 
 enum omap_channel {
@@ -142,6 +165,13 @@ enum omap_dss_venc_type {
 enum omap_display_caps {
 	OMAP_DSS_DISPLAY_CAP_MANUAL_UPDATE	= 1 << 0,
 	OMAP_DSS_DISPLAY_CAP_TEAR_ELIM		= 1 << 1,
+	OMAP_DSS_DISPLAY_CAP_AUTO_UPDATE	= 1 << 2,
+};
+
+enum omap_dss_color_conv_type {
+	OMAP_DSS_COLOR_CONV_BT601_5_LR = 0,
+	OMAP_DSS_COLOR_CONV_BT601_5_FR = 0,
+	OMAP_DSS_COLOR_CONV_BT709,
 };
 
 enum omap_dss_update_mode {
@@ -154,6 +184,7 @@ enum omap_dss_display_state {
 	OMAP_DSS_DISPLAY_DISABLED = 0,
 	OMAP_DSS_DISPLAY_ACTIVE,
 	OMAP_DSS_DISPLAY_SUSPENDED,
+	OMAP_DSS_DISPLAY_TRANSITION,
 };
 
 enum omap_dispc_irq_type {
@@ -207,6 +238,13 @@ enum omap_overlay_zorder {
 	OMAP_DSS_OVL_ZORDER_1   = 1,
 	OMAP_DSS_OVL_ZORDER_2   = 2,
 	OMAP_DSS_OVL_ZORDER_3   = 3,
+};
+
+/* Denotes the manual power control state of a display */
+enum omap_dss_manual_pwrctrl {
+	OMAP_DSS_MPC_DISABLED = 0,
+	OMAP_DSS_MPC_SUSPEND,
+	OMAP_DSS_MPC_RESUME,
 };
 
 /* RFBI */
@@ -275,6 +313,7 @@ void dsi_video_mode_disable(struct omap_dss_device *dssdev);
 int dsi_vc_gen_read_2(struct omap_dss_device *dssdev, int channel, u16 cmd,
 		u8 *buf, int buflen);
 void dsi_videomode_panel_preinit(struct omap_dss_device *dssdev);
+int dsi_video_mode_enable(struct omap_dss_device *dssdev, u8 data_type);
 
 
 /* Board specific data */
@@ -320,6 +359,33 @@ struct omap_video_timings {
 	u16 vfp;	/* Vertical front porch */
 	/* Unit: line clocks */
 	u16 vbp;	/* Vertical back porch */
+};
+
+struct omap_dsi_video_timings {
+	/* Unit: pixel clocks */
+	u16 hsa;        /* Horizontal synch active */
+	/* Unit: pixel clocks */
+	u16 hfp;        /* Horizontal front porch */
+	/* Unit: pixel clocks */
+	u16 hbp;        /* Horizontal back porch */
+	/* Unit: line clocks */
+	u16 vsa;        /* Vertical synch active */
+	/* Unit: line clocks */
+	u16 vfp;        /* Vertical front porch */
+	/* Unit: line clocks */
+	u16 vbp;        /* Vertical back porch */
+};
+
+struct omap_dsi_hs_mode_timing {
+	/* time in nsec */
+	u32 ths_prepare;
+	u32 ths_prepare_ths_zero;
+	u32 ths_trail;
+	u32 ths_exit;
+	u32 tlpx_half;
+	u32 tclk_trail;
+	u32 tclk_prepare;
+	u32 tclk_zero;
 };
 
 #ifdef CONFIG_OMAP2_DSS_VENC
@@ -456,6 +522,7 @@ struct omap_overlay_manager {
 	bool device_changed;
 	/* if true, info has been changed but not applied() yet */
 	bool info_dirty;
+	bool ignore_sync;
 
 	int (*set_device)(struct omap_overlay_manager *mgr,
 		struct omap_dss_device *dssdev);
@@ -516,12 +583,22 @@ struct omap_dss_device {
 
 			bool ext_te;
 			u8 ext_te_gpio;
+
+			struct omap_dsi_video_timings vm_timing;
+			struct omap_dsi_hs_mode_timing hs_timing;
+			bool d2l_use_ulps;
 		} dsi;
 
 		struct {
 			enum omap_dss_venc_type type;
 			bool invert_polarity;
 		} venc;
+
+#ifdef CONFIG_PANEL_MAPPHONE_OMAP4_HDTV
+		struct {
+			u8 ds_percent; /* drive strength percentage */
+		} hdmi;
+#endif
 	} phy;
 
 	struct {
@@ -562,6 +639,9 @@ struct omap_dss_device {
 		int acb;	/* ac-bias pin frequency */
 
 		enum omap_panel_config config;
+		unsigned long panel_id;
+		u32 width_in_mm;
+		u32 height_in_mm;
 		struct fb_monspecs monspecs;
 
 		u32 width_in_um;
@@ -576,7 +656,7 @@ struct omap_dss_device {
 	int reset_gpio;
 	int hpd_gpio;
 
-	bool skip_init;
+	bool skip_vm_init;
 
 	int max_backlight_level;
 
@@ -591,6 +671,7 @@ struct omap_dss_device {
 
 	/* helper variable for driver suspend/resume */
 	bool activate_after_resume;
+	enum omap_dss_manual_pwrctrl manual_power_control;
 
 	enum omap_display_caps caps;
 
@@ -605,6 +686,11 @@ struct omap_dss_device {
 	void (*platform_disable)(struct omap_dss_device *dssdev);
 	int (*set_backlight)(struct omap_dss_device *dssdev, int level);
 	int (*get_backlight)(struct omap_dss_device *dssdev);
+
+#ifdef CONFIG_PANEL_MAPPHONE_OMAP4_HDTV
+	int (*platform_enable_hpd)(struct omap_dss_device *dssdev);
+	void (*platform_disable_hpd)(struct omap_dss_device *dssdev);
+#endif
 };
 
 struct omap_dss_driver {
@@ -614,6 +700,7 @@ struct omap_dss_driver {
 	void (*remove)(struct omap_dss_device *);
 
 	int (*enable)(struct omap_dss_device *display);
+	int (*framedone)(struct omap_dss_device *display);
 	void (*disable)(struct omap_dss_device *display);
 	int (*suspend)(struct omap_dss_device *display);
 	int (*resume)(struct omap_dss_device *display);
@@ -630,6 +717,8 @@ struct omap_dss_driver {
 
 	int (*enable_te)(struct omap_dss_device *dssdev, bool enable);
 	int (*get_te)(struct omap_dss_device *dssdev);
+	bool (*support_te)(struct omap_dss_device *dssdev);
+	bool (*manual_te_trigger)(struct omap_dss_device *dssdev);
 
 	u8 (*get_rotate)(struct omap_dss_device *dssdev);
 	int (*set_rotate)(struct omap_dss_device *dssdev, u8 rotate);
@@ -662,9 +751,25 @@ struct omap_dss_driver {
 	int (*set_mode)(struct omap_dss_device *dssdev,
 			struct fb_videomode *mode);
 
+	int (*reg_read)(struct omap_dss_device *dssdev, u8 address, u16 size,
+			u8 *buf, u8 use_hs_mode);
+	int (*reg_write)(struct omap_dss_device *dssdev, u16 size, u8 *buf,
+		u8 use_hs_mode);
+
+	int (*get_dsi_vc_chnls)(struct omap_dss_device *dssdev,
+			u8 *dsi_vc_cmd_chnl, u8 *dsi_vc_video_chnl);
+
 	/* for wrapping around state changes */
 	void (*disable_orig)(struct omap_dss_device *display);
 	int (*enable_orig)(struct omap_dss_device *display);
+
+	int (*suspend_orig)(struct omap_dss_device *display);
+	int (*resume_orig)(struct omap_dss_device *display);
+#ifdef CONFIG_PANEL_MAPPHONE_OMAP4_HDTV
+	int (*get_edid)(struct omap_dss_device *dssdev, u8 *edid, int len);
+	int (*set_hdmi_mode)(struct omap_dss_device *dssdev, int code);
+	int (*set_hpd)(struct omap_dss_device *dssdev, bool enable);
+#endif
 };
 
 int omap_dss_register_driver(struct omap_dss_driver *);
@@ -708,7 +813,8 @@ void omapdss_display_get_dimensions(struct omap_dss_device *dssdev,
 
 void omapdss_dsi_vc_enable_hs(struct omap_dss_device *dssdev, int channel,
 		bool enable);
-int omapdss_dsi_enable_te(struct omap_dss_device *dssdev, bool enable);
+int omapdss_dsi_enable_te(struct omap_dss_device *dssdev, bool enable,
+			 enum omap_dsi_te_type type);
 
 int omap_dsi_prepare_update(struct omap_dss_device *dssdev,
 				    u16 *x, u16 *y, u16 *w, u16 *h,

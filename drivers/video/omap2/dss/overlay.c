@@ -97,7 +97,7 @@ static ssize_t overlay_manager_store(struct omap_overlay *ovl, const char *buf,
 		}
 
 		r = old_mgr->apply(old_mgr);
-		if (r)
+		if (r && (r != -ENODEV)) /* Allow the disabled case */
 			goto err;
 	}
 
@@ -622,6 +622,8 @@ static int omap_dss_set_manager(struct omap_overlay *ovl,
 
 	ovl->manager = mgr;
 
+	if (dispc_runtime_get())
+		DSSERR("dispc_runtime_get failed to enable clks.\n");
 	/* XXX: When there is an overlay on a DSI manual update display, and
 	 * the overlay is first disabled, then moved to tv, and enabled, we
 	 * seem to get SYNC_LOST_DIGIT error.
@@ -635,7 +637,7 @@ static int omap_dss_set_manager(struct omap_overlay *ovl,
 	 * the overlay, but before moving the overlay to TV.
 	 */
 	dispc_set_channel_out(ovl->id, mgr->id);
-
+	dispc_runtime_put();
 	return 0;
 }
 

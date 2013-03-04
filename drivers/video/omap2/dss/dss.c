@@ -30,6 +30,7 @@
 #include <linux/clk.h>
 #include <linux/platform_device.h>
 #include <linux/pm_runtime.h>
+#include <linux/atomic.h>
 
 #include <video/omapdss.h>
 #include <plat/clock.h>
@@ -62,11 +63,10 @@ static struct {
 	struct platform_device *pdev;
 	void __iomem    *base;
 
-	struct mutex	runtime_lock;
-	int		runtime_count;
-
 	struct clk	*dpll4_m4_ck;
 	struct clk	*dss_clk;
+	struct clk      *dss_fck;
+	struct clk      *sys_clk;
 
 	unsigned long	cache_req_pck;
 	unsigned long	cache_prate;
@@ -102,7 +102,7 @@ static inline u32 dss_read_reg(const struct dss_reg idx)
 #define RR(reg) \
 	dss_write_reg(DSS_##reg, dss.ctx[(DSS_##reg).idx / sizeof(u32)])
 
-static void dss_save_context(void)
+void dss_save_context(void)
 {
 	DSSDBG("dss_save_context\n");
 
@@ -119,7 +119,7 @@ static void dss_save_context(void)
 	DSSDBG("context saved\n");
 }
 
-static void dss_restore_context(void)
+void dss_restore_context(void)
 {
 	DSSDBG("dss_restore_context\n");
 
@@ -647,13 +647,28 @@ static int dss_get_clocks(void)
 	struct clk *clk;
 	int r;
 
+	clk = omap_clk_get_by_name("dss_sys_clk");
+	if (!clk) {
+		DSSERR("can't get dss_sys_clk\n");
+		r = -EINVAL;
+		goto err;
+	}
+	dss.sys_clk = clk;
+
+	clk = omap_clk_get_by_name("dss_fck");
+	if (!clk) {
+		DSSERR("can't get dss_fck\n");
+		r = -EINVAL;
+		goto err;
+	}
+	dss.dss_fck = clk;
+
 	clk = clk_get(&dss.pdev->dev, "dss_clk");
 	if (IS_ERR(clk)) {
 		DSSERR("can't get clock dss_clk\n");
 		r = PTR_ERR(clk);
 		goto err;
 	}
-
 	dss.dss_clk = clk;
 
 	if (cpu_is_omap34xx()) {
@@ -679,6 +694,10 @@ static int dss_get_clocks(void)
 	return 0;
 
 err:
+	if (dss.sys_clk)
+		clk_put(dss.sys_clk);
+	if (dss.dss_fck)
+		clk_put(dss.dss_fck);
 	if (dss.dss_clk)
 		clk_put(dss.dss_clk);
 	if (dss.dpll4_m4_ck)
@@ -696,51 +715,35 @@ static void dss_put_clocks(void)
 
 int dss_runtime_get(void)
 {
-	int r;
+	int r = 0;
 
-	mutex_lock(&dss.runtime_lock);
-
-	if (dss.runtime_count++ == 0) {
-		DSSDBG("dss_runtime_get\n");
-
-		clk_enable(dss.dss_clk);
-
-		r = pm_runtime_get_sync(&dss.pdev->dev);
-		WARN_ON(r);
-		if (r < 0)
-			goto err;
-
-		dss_restore_context();
-	}
-
-	mutex_unlock(&dss.runtime_lock);
-
-	return 0;
-
-err:
-	clk_disable(dss.dss_clk);
-	mutex_unlock(&dss.runtime_lock);
+	r = clk_enable(dss.sys_clk);
+	if (!r) {
+		r = clk_enable(dss.dss_clk);
+		if (!r) {
+			r = clk_enable(dss.dss_fck);
+			if (r) {
+				printk(KERN_ERR"%s: failed to enable dss_fck, ret = %d\n",
+					 __func__, r);
+				clk_disable(dss.dss_clk);
+				clk_disable(dss.sys_clk);
+			}
+		} else {
+			printk(KERN_ERR"%s: failed to enable dss_clk, ret = %d\n",
+				 __func__, r);
+			clk_disable(dss.sys_clk);
+		}
+	} else
+		 printk(KERN_ERR"%s: failed to enable sys clk, ret = %d.\n",
+			 __func__, r);
 	return r;
 }
 
 void dss_runtime_put(void)
 {
-	mutex_lock(&dss.runtime_lock);
-
-	if (--dss.runtime_count == 0) {
-		int r;
-
-		DSSDBG("dss_runtime_put\n");
-
-		dss_save_context();
-
-		r = pm_runtime_put_sync(&dss.pdev->dev);
-		WARN_ON(r);
-
-		clk_disable(dss.dss_clk);
-	}
-
-	mutex_unlock(&dss.runtime_lock);
+	clk_disable(dss.dss_fck);
+	clk_disable(dss.sys_clk);
+	clk_disable(dss.dss_clk);
 }
 
 /* DEBUGFS */
@@ -781,9 +784,7 @@ static int omap_dsshw_probe(struct platform_device *pdev)
 	if (r)
 		goto err_clocks;
 
-	mutex_init(&dss.runtime_lock);
-
-	pm_runtime_enable(&pdev->dev);
+	/* pm_runtime_enable(&pdev->dev);*/
 
 	r = dss_runtime_get();
 	if (r)

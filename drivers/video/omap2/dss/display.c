@@ -30,6 +30,11 @@
 #include <video/omapdss.h>
 #include "dss.h"
 
+#define DSS_CONTEXT_NOT_RESTORED	0
+#define DSS_CONTEXT_RESTORED		1
+
+static atomic_t context_state = ATOMIC_INIT(DSS_CONTEXT_RESTORED);
+
 static ssize_t display_enabled_show(struct device *dev,
 		struct device_attribute *attr, char *buf)
 {
@@ -495,6 +500,10 @@ static int dss_suspend_device(struct device *dev, void *data)
 	int r;
 	struct omap_dss_device *dssdev = to_dss_device(dev);
 
+	/* Ignore manual power control devices */
+	if (dssdev->manual_power_control != OMAP_DSS_MPC_DISABLED)
+		return 0;
+
 	if (dssdev->state != OMAP_DSS_DISPLAY_ACTIVE) {
 		dssdev->activate_after_resume = false;
 		return 0;
@@ -535,6 +544,10 @@ static int dss_resume_device(struct device *dev, void *data)
 	int r;
 	struct omap_dss_device *dssdev = to_dss_device(dev);
 
+	/* Ignore manual power control devices */
+	if (dssdev->manual_power_control != OMAP_DSS_MPC_DISABLED)
+		return 0;
+
 	if (dssdev->activate_after_resume && dssdev->driver->resume) {
 		r = dssdev->driver->resume(dssdev);
 		if (r)
@@ -551,6 +564,106 @@ int dss_resume_all_devices(void)
 	struct bus_type *bus = dss_get_bus();
 
 	return bus_for_each_dev(bus, NULL, NULL, dss_resume_device);
+}
+static void save_all_ctx(void)
+{
+	DSSDBG("save context\n");
+	dss_runtime_get();
+
+	dss_save_context();
+
+	/*
+	 * There is use case user space MME app need to disable ovl,
+	 * but it might call down to display driver after display is
+	 * already off and context was already saved, so these changes
+	 * are not saved, when resume, this change will be lost.
+	 * To be simple, disable overlay planes before save dispc ctx.
+	 */
+	dispc_enable_plane(OMAP_DSS_VIDEO1, 0);
+	dispc_enable_plane(OMAP_DSS_VIDEO2, 0);
+	dispc_enable_plane(OMAP_DSS_VIDEO3, 0);
+
+	dispc_save_context();
+
+	dss_runtime_put();
+}
+
+static void restore_all_ctx(void)
+{
+	DSSDBG("restore context\n");
+	dss_runtime_get();
+
+	dss_restore_context();
+	dispc_restore_context();
+
+	dss_runtime_put();
+}
+
+static int dss_check_state_disabled(struct device *dev, void *data)
+{
+	struct omap_dss_device *dssdev = to_dss_device(dev);
+
+	if (dssdev->state == OMAP_DSS_DISPLAY_DISABLED ||
+			dssdev->state == OMAP_DSS_DISPLAY_SUSPENDED)
+		return 0;
+	else
+		return -EINVAL;
+}
+
+/*
+ * Checks if all devices are suspended/disabled.
+ * Disables mainclk (DSS clocks on OMAP4) if true and do_clk_disable is true.
+ */
+int dss_clkdis_save_ctx(bool do_clk_disable)
+{
+	int r;
+	struct bus_type *bus = dss_get_bus();
+
+	DSSDBG("%s enter\n", __func__);
+
+	r = bus_for_each_dev(bus, NULL, NULL, dss_check_state_disabled);
+
+	if (r) {
+		/* Some devices are not disabled/suspended */
+		r = -EBUSY;
+	} else {
+		if (do_clk_disable) {
+			atomic_set(&context_state, DSS_CONTEXT_NOT_RESTORED);
+			save_all_ctx();
+		}
+		r = 0;
+	}
+
+	if (do_clk_disable)
+		dsi_runtime_put();
+
+	return r;
+}
+
+/*
+ * enables mainclk (DSS clocks on OMAP4 if any device is enabled.
+ * Returns 0 on success.
+ */
+int dss_clken_restore_ctx(void)
+{
+	int r;
+	struct bus_type *bus = dss_get_bus();
+
+	DSSDBG("%s enter\n", __func__);
+	r = bus_for_each_dev(bus, NULL, NULL, dss_check_state_disabled);
+
+	if (r) {
+		r = dsi_runtime_get();
+		if ((!r) && (atomic_cmpxchg(&context_state,
+		DSS_CONTEXT_NOT_RESTORED, DSS_CONTEXT_RESTORED) ==
+			DSS_CONTEXT_NOT_RESTORED)) {
+			restore_all_ctx();
+		}
+		return r;
+	} else {
+		/* All devices are disabled/suspended */
+		return -EAGAIN;
+	}
 }
 
 static int dss_disable_device(struct device *dev, void *data)

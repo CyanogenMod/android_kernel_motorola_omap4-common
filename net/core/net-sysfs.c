@@ -305,6 +305,23 @@ static ssize_t store_group(struct device *dev, struct device_attribute *attr,
 	return netdev_store(dev, attr, buf, len, change_group);
 }
 
+static ssize_t show_packet_inactive_time(struct device *dev,
+				     struct device_attribute *attr, char *buf)
+{
+	const struct net_device *netdev = to_net_dev(dev);
+	ssize_t ret = 0;
+	long inactive_time = 0;
+
+	read_lock(&dev_base_lock);
+	if (dev_isalive(netdev))
+		inactive_time = (long)jiffies-(long)(netdev->last_packet_time);
+	read_unlock(&dev_base_lock);
+
+	ret = sprintf(buf, "%d\n",
+			jiffies_to_msecs((unsigned long)inactive_time));
+	return ret;
+}
+
 static struct device_attribute net_class_attributes[] = {
 	__ATTR(addr_assign_type, S_IRUGO, show_addr_assign_type, NULL),
 	__ATTR(addr_len, S_IRUGO, show_addr_len, NULL),
@@ -327,6 +344,7 @@ static struct device_attribute net_class_attributes[] = {
 	__ATTR(tx_queue_len, S_IRUGO | S_IWUSR, show_tx_queue_len,
 	       store_tx_queue_len),
 	__ATTR(netdev_group, S_IRUGO | S_IWUSR, show_group, store_group),
+	__ATTR(packet_inactive_time, S_IRUGO, show_packet_inactive_time, NULL),
 	{}
 };
 

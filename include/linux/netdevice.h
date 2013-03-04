@@ -1350,6 +1350,8 @@ struct net_device {
 
 	/* group the device belongs to */
 	int group;
+	/* last jiffy time packcket is send or received over this device */
+	unsigned long last_packet_time;
 };
 #define to_net_dev(d) container_of(d, struct net_device, dev)
 

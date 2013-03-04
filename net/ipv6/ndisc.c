@@ -1157,6 +1157,8 @@ static void ndisc_router_discovery(struct sk_buff *skb)
 	struct ndisc_options ndopts;
 	int optlen;
 	unsigned int pref = 0;
+	int tmp = 0;
+	char *rawmsg = (char *)skb_transport_header(skb);
 
 	__u8 * opt = (__u8 *)(ra_msg + 1);
 
@@ -1232,6 +1234,10 @@ static void ndisc_router_discovery(struct sk_buff *skb)
 		goto skip_defrtr;
 
 	lifetime = ntohs(ra_msg->icmph.icmp6_rt_lifetime);
+	ND_PRINTK1(KERN_DEBUG "%s: RA HEADER: \n", __func__);
+	for (tmp = 0; tmp < sizeof(struct ra_msg); tmp++)
+		ND_PRINTK1(KERN_DEBUG " %02x ", rawmsg[tmp]);
+	ND_PRINTK1(KERN_DEBUG "\n");
 
 #ifdef CONFIG_IPV6_ROUTER_PREF
 	pref = ra_msg->icmph.icmp6_router_pref;
@@ -1385,7 +1391,12 @@ skip_linkparms:
 		for (p = ndopts.nd_opts_pi;
 		     p;
 		     p = ndisc_next_option(p, ndopts.nd_opts_pi_end)) {
+#if defined(CONFIG_IPV6_ROUTER_RS_PRD)
+			addrconf_prefix_rcv(skb->dev, (u8 *)p,
+					(p->nd_opt_len) << 3, (HZ*lifetime));
+#else
 			addrconf_prefix_rcv(skb->dev, (u8*)p, (p->nd_opt_len) << 3);
+#endif
 		}
 	}
 

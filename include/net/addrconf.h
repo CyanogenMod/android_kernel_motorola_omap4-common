@@ -151,7 +151,12 @@ extern int ipv6_chk_mcast_addr(struct net_device *dev,
 			       const struct in6_addr *src_addr);
 extern int ipv6_is_mld(struct sk_buff *skb, int nexthdr);
 
+#if defined(CONFIG_IPV6_ROUTER_RS_PRD)
+extern void addrconf_prefix_rcv(struct net_device *dev, u8 *opt, int len,
+				int r_lifetime);
+#else
 extern void addrconf_prefix_rcv(struct net_device *dev, u8 *opt, int len);
+#endif
 
 /*
  *	anycast prototypes (anycast.c)

@@ -25,6 +25,7 @@
 #include <net/caif/caif_layer.h>
 #include <net/caif/caif_dev.h>
 #include <net/caif/cfpkt.h>
+#include <linux/android_aid.h>
 
 MODULE_LICENSE("GPL");
 MODULE_ALIAS_NETPROTO(AF_CAIF);
@@ -1067,7 +1068,7 @@ static int caif_create(struct net *net, struct socket *sock, int protocol,
 		.obj_size = sizeof(struct caifsock),
 	};
 
-	if (!capable(CAP_SYS_ADMIN) && !capable(CAP_NET_ADMIN))
+	if (!capable(CAP_SYS_ADMIN) && !capable(CAP_NET_ADMIN) && !in_egroup_p(AID_MOT_CAIF))
 		return -EPERM;
 	/*
 	 * The sock->type specifies the socket type to use.

@@ -39,6 +39,8 @@
 #include "tf_crypto.h"
 #endif
 
+#include <linux/android_aid.h>
+
 #define TF_PRIVILEGED_UID_GID 1000 /* Android system AID */
 
 /*----------------------------------------------------------------------------
@@ -796,7 +798,8 @@ int tf_open_client_session(
 				"TF_LOGIN_PRIVILEGED for kernel API\n");
 		} else if ((current_euid() != TF_PRIVILEGED_UID_GID) &&
 			   (current_egid() != TF_PRIVILEGED_UID_GID) &&
-			   (current_euid() != 0) && (current_egid() != 0)) {
+			   (current_euid() != AID_MOT_TPAPI) &&
+			   (current_egid() != AID_MOT_TPAPI)) {
 			dprintk(KERN_ERR "tf_open_client_session: "
 				" user %d, group %d not allowed to open "
 				"session with TF_LOGIN_PRIVILEGED\n",

@@ -19,6 +19,7 @@
 #include <linux/cpu.h>
 #include <linux/delay.h>
 #include <linux/cpu_pm.h>
+#include <linux/pm_qos_params.h>
 
 #include <asm/cacheflush.h>
 #include <asm/proc-fns.h>
@@ -114,16 +115,39 @@ static struct cpuidle_params cpuidle_params_table[] = {
 	/* C1 - CPUx WFI + MPU ON  + CORE ON */
 	{.exit_latency = 2 + 2,	.target_residency = 5, .valid = 1},
 	/* C2 - CPU0 INA + CPU1 INA + MPU INA  + CORE INA */
-	{.exit_latency = 1100, .target_residency = 1100, .valid = 1},
+	{.exit_latency = 350, .target_residency = 350, .valid = 1},
 	/* C3 - CPU0 OFF + CPU1 OFF + MPU CSWR + CORE CSWR */
-	{.exit_latency = 1200, .target_residency = 1200, .valid = 1},
+	{.exit_latency = 4746, .target_residency = 15000, .valid = 1},
 #ifdef CONFIG_OMAP_ALLOW_OSWR
 	/* C4 - CPU0 OFF + CPU1 OFF + MPU CSWR + CORE OSWR */
-	{.exit_latency = 1500, .target_residency = 1500, .valid = 1},
+	{.exit_latency = 4942, .target_residency = 39000, .valid = 1},
 #else
 	{.exit_latency = 1500, .target_residency = 1500, .valid = 0},
 #endif
 };
+
+/* Gate long latency C states for 120 seconds to reduce boot time */
+static unsigned int __initdata boot_noidle_time = 120;
+
+/* Command line override to allow matching with application start time */
+static int __init boot_noidle_time_setup(char *str)
+{
+	get_option(&str, &boot_noidle_time);
+	return 1;
+}
+__setup("boot_noidle_time=", boot_noidle_time_setup);
+
+struct pm_qos_request_list pm_qos_handle;
+static struct delayed_work dwork;
+
+static void dwork_timer(struct work_struct *work)
+{
+	pr_info("%s: pm_qos_remove_request for CPU_DMA_LATENCY\n", __func__);
+
+	pm_qos_remove_request(&pm_qos_handle);
+
+}
+
 
 static void omap4_update_actual_state(struct cpuidle_device *dev,
 	struct omap4_processor_cx *cx)
@@ -329,7 +353,10 @@ static void omap4_enter_idle_primary(struct omap4_processor_cx *cx)
 
 	pr_debug("%s: cpu0 down\n", __func__);
 
-	omap4_enter_sleep(0, PWRDM_POWER_OFF, false);
+	if (cx->type == OMAP4_STATE_C2)
+		omap4_enter_sleep(0, PWRDM_POWER_INACTIVE, false);
+	else
+		omap4_enter_sleep(0, PWRDM_POWER_OFF, false);
 
 	pr_debug("%s: cpu0 up\n", __func__);
 
@@ -685,6 +712,26 @@ int __init omap4_idle_init(void)
 	struct omap4_processor_cx *cx;
 	struct cpuidle_state *state;
 	struct cpuidle_device *dev;
+
+
+	/* Restrict C-State to C0.
+	 * Below, we set the CPU_DMA_LATENCY to 10, which is
+	 * less than the C1 state exit latency. This will ensure
+	 * that the cpuidle governor does not transition to C1 or
+	 * higher states till the CPU_DMA_LATENCY is relaxed.
+	 * The CPU_DMA_LATENCY requirement is removed when the
+	 * boot timer (which is set to 120 secs right now) expires.
+
+	 * This is temporary work around for a Ducati/ipc_link power-up
+	 * issue.
+	*/
+	pm_qos_add_request(&pm_qos_handle, PM_QOS_CPU_DMA_LATENCY, 10);
+
+	INIT_DELAYED_WORK(&dwork, dwork_timer);
+	schedule_delayed_work_on(0, &dwork, boot_noidle_time * HZ);
+
+	pr_info("%s:qos_add_request for CPU_DMA_LATENCY for %dsecs\n",
+			__func__, boot_noidle_time);
 
 	mpu_pd = pwrdm_lookup("mpu_pwrdm");
 	BUG_ON(!mpu_pd);

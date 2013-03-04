@@ -30,6 +30,7 @@
 #include <linux/input.h>
 #include <linux/slab.h>
 #include <linux/pm_runtime.h>
+#include <linux/sched.h>
 
 #include <plat/omap4-keypad.h>
 
@@ -69,11 +70,14 @@
 /* OMAP4 values */
 #define OMAP4_VAL_IRQDISABLE		0x00
 /* DEBOUNCE TIME VALUE = 0x2 PVT = 0x6  Tperiod = 12ms*/
-#define OMAP4_VAL_DEBOUNCINGTIME	0x2
+#define OMAP4_VAL_DEBOUNCINGTIME	0x3
 #define OMAP4_VAL_PVT			0x6
 
 
 #define OMAP4_MASK_IRQSTATUSDISABLE	0xFFFF
+
+#define OMAP4_KEYPAD_TIMER_DELAY	50      /* ms */
+#define OMAP4_KEYPAD_SW_DEBOUNCE	21      /* ms */
 
 struct omap4_keypad {
 	struct input_dev *input;
@@ -85,22 +89,46 @@ struct omap4_keypad {
 	unsigned int cols;
 	unsigned int row_shift;
 	unsigned char key_state[8];
+	struct timer_list timer;
+	unsigned long long rel_time[KEY_UNKNOWN];
 	void (*keypad_pad_wkup)(int enable);
 	unsigned short keymap[];
 };
 
-/* Interrupt handler */
-static irqreturn_t omap4_keypad_interrupt(int irq, void *dev_id)
+static bool omap4_keypad_validate_event(struct omap4_keypad *keypad_data,
+						unsigned int code,
+						unsigned char pressed)
 {
-	struct omap4_keypad *keypad_data = dev_id;
-	struct input_dev *input_dev = keypad_data->input;
-	unsigned char key_state[ARRAY_SIZE(keypad_data->key_state)];
-	unsigned int col, row, code, changed;
-	u32 *new_state = (u32 *) key_state;
+	unsigned long long curr_time;
+	unsigned long long prev_time;
 
-	*new_state = __raw_readl(keypad_data->base + OMAP4_KBD_FULLCODE31_0);
-	*(new_state + 1) = __raw_readl(keypad_data->base
-						+ OMAP4_KBD_FULLCODE63_32);
+	if (keypad_data->keymap[code] >= ARRAY_SIZE(keypad_data->rel_time))
+		return false;
+
+	curr_time = cpu_clock(smp_processor_id());
+	prev_time = keypad_data->rel_time[keypad_data->keymap[code]];
+
+	if (pressed) {
+		if ((curr_time - prev_time) <
+			(OMAP4_KEYPAD_SW_DEBOUNCE * 1000000))
+			return false;
+
+		keypad_data->rel_time[keypad_data->keymap[code]] = 0;
+	} else {
+		keypad_data->rel_time[keypad_data->keymap[code]] = curr_time;
+
+		if (prev_time)
+			return false;
+	}
+
+	return true;
+}
+
+static void omap4_keypad_sw_scan(struct omap4_keypad *keypad_data,
+					unsigned char key_state[])
+{
+	struct input_dev *input_dev = keypad_data->input;
+	unsigned int col, row, code, changed;
 
 	for (row = 0; row < keypad_data->rows; row++) {
 		changed = key_state[row] ^ keypad_data->key_state[row];
@@ -111,6 +139,17 @@ static irqreturn_t omap4_keypad_interrupt(int irq, void *dev_id)
 			if (changed & (1 << col)) {
 				code = MATRIX_SCAN_CODE(row, col,
 						keypad_data->row_shift);
+
+				if (!omap4_keypad_validate_event(keypad_data,
+					code, key_state[row] & (1 << col))) {
+					printk(KERN_INFO "WARNING: Ignore %d "
+						"key %s event\n",
+						keypad_data->keymap[code],
+						key_state[row] & (1 << col) ?
+						"down" : "up");
+					continue;
+				}
+
 				input_event(input_dev, EV_MSC, MSC_SCAN, code);
 				input_report_key(input_dev,
 						 keypad_data->keymap[code],
@@ -123,12 +162,58 @@ static irqreturn_t omap4_keypad_interrupt(int irq, void *dev_id)
 
 	memcpy(keypad_data->key_state, key_state,
 		sizeof(keypad_data->key_state));
+}
+
+/* Interrupt handler */
+static irqreturn_t omap4_keypad_interrupt(int irq, void *dev_id)
+{
+	struct omap4_keypad *keypad_data = dev_id;
+	unsigned char key_state[ARRAY_SIZE(keypad_data->key_state)];
+	u32 *new_state = (u32 *) key_state;
+
+	*new_state = __raw_readl(keypad_data->base + OMAP4_KBD_FULLCODE31_0);
+	*(new_state + 1) = __raw_readl(keypad_data->base
+						+ OMAP4_KBD_FULLCODE63_32);
+
+	omap4_keypad_sw_scan(keypad_data, key_state);
+
+	/* Workaround for the missing "release" event issue */
+	if (*new_state || *(new_state + 1))
+		mod_timer_pinned(&keypad_data->timer,
+			jiffies + msecs_to_jiffies(OMAP4_KEYPAD_TIMER_DELAY));
+	else
+		del_timer(&keypad_data->timer);
 
 	/* clear pending interrupts */
 	__raw_writel(__raw_readl(keypad_data->base + OMAP4_KBD_IRQSTATUS),
 			keypad_data->base + OMAP4_KBD_IRQSTATUS);
 
 	return IRQ_HANDLED;
+}
+
+static void omap4_keypad_timer(unsigned long data)
+{
+	struct omap4_keypad *keypad_data = (struct omap4_keypad *)data;
+	unsigned char key_state[ARRAY_SIZE(keypad_data->key_state)];
+	unsigned int irq_mask;
+
+	/* Disable interrupts */
+	irq_mask = __raw_readl(keypad_data->base + OMAP4_KBD_IRQENABLE);
+	__raw_writel(OMAP4_VAL_IRQDISABLE,
+		     keypad_data->base + OMAP4_KBD_IRQENABLE);
+
+	if (!__raw_readl(keypad_data->base + OMAP4_KBD_STATEMACHINE)) {
+		printk(KERN_INFO "WARNING: keypad runs into odd state - "
+					"fake release events for all keys\n");
+		memset(key_state, 0, sizeof(key_state));
+		omap4_keypad_sw_scan(keypad_data, key_state);
+	} else {
+		mod_timer_pinned(&keypad_data->timer,
+			jiffies + msecs_to_jiffies(OMAP4_KEYPAD_TIMER_DELAY));
+	}
+
+	/* enable interrupts */
+	__raw_writel(irq_mask, keypad_data->base + OMAP4_KBD_IRQENABLE);
 }
 
 static int omap4_keypad_open(struct input_dev *input)
@@ -158,6 +243,8 @@ static int omap4_keypad_open(struct input_dev *input)
 	__raw_writel(__raw_readl(keypad_data->base + OMAP4_KBD_IRQSTATUS),
 			keypad_data->base + OMAP4_KBD_IRQSTATUS);
 	enable_irq(keypad_data->irq);
+	setup_timer(&keypad_data->timer, omap4_keypad_timer,
+			(unsigned long)keypad_data);
 
 	return 0;
 }
@@ -271,7 +358,10 @@ static int __devinit omap4_keypad_probe(struct platform_device *pdev)
 	input_dev->keycodemax	= max_keys;
 
 	__set_bit(EV_KEY, input_dev->evbit);
-	__set_bit(EV_REP, input_dev->evbit);
+
+	/* Enable auto repeat feature of Linux input subsystem */
+	if (pdata->rep)
+		__set_bit(EV_REP, input_dev->evbit);
 
 	input_set_capability(input_dev, EV_MSC, MSC_SCAN);
 

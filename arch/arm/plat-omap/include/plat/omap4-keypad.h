@@ -8,6 +8,7 @@ struct omap4_keypad_platform_data {
 
 	u8 rows;
 	u8 cols;
+	bool rep;
 	void (*keypad_pad_wkup)(int enable);
 };
 

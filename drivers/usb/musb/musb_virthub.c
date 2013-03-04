@@ -41,6 +41,7 @@
 #include <linux/timer.h>
 
 #include <asm/unaligned.h>
+#include <asm/mach-types.h>
 
 #include "musb_core.h"
 
@@ -372,7 +373,8 @@ int musb_hub_control(
 			 * initialization logic, e.g. for OTG, or change any
 			 * logic relating to VBUS power-up.
 			 */
-			if (!(is_otg_enabled(musb) && hcd->self.is_b_host))
+			if (!machine_is_mapphone() &&
+			!(is_otg_enabled(musb) && hcd->self.is_b_host))
 				musb_start(musb);
 			break;
 		case USB_PORT_FEAT_RESET:

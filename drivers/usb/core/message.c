@@ -1850,7 +1850,9 @@ free_interfaces:
 			"adding %s (config #%d, interface %d)\n",
 			dev_name(&intf->dev), configuration,
 			intf->cur_altsetting->desc.bInterfaceNumber);
+#ifndef CONFIG_USB_DISABLE_ASYNC_SUSPEND
 		device_enable_async_suspend(&intf->dev);
+#endif
 		ret = device_add(&intf->dev);
 		if (ret != 0) {
 			dev_err(&dev->dev, "device_add(%s) --> %d\n",

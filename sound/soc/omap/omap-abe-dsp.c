@@ -1865,8 +1865,8 @@ static const struct snd_pcm_hardware omap_abe_hardware = {
 				  SNDRV_PCM_FMTBIT_S32_LE,
 	.period_bytes_min	= 4 * 1024,
 	.period_bytes_max	= 24 * 1024,
-	.periods_min		= 4,
-	.periods_max		= 4,
+	.periods_min		= 2,
+	.periods_max		= 2,
 	.buffer_bytes_max	= 24 * 1024 * 2,
 };
 
@@ -2253,6 +2253,9 @@ static int aess_hw_params(struct snd_pcm_substream *substream,
 	else
 		format.samp_format = STEREO_16_16;
 
+	if (format.f == 44100)
+		abe_write_event_generator(EVENT_44100);
+
 	period_size = params_period_bytes(params);
 
 	/*Adding ping pong buffer subroutine*/
@@ -2269,7 +2272,7 @@ static int aess_hw_params(struct snd_pcm_substream *substream,
 	/* Memory mapping for hw params */
 	runtime->dma_area  = abe->io_base[0] + dst;
 	runtime->dma_addr  = 0;
-	runtime->dma_bytes = period_size * 4;
+	runtime->dma_bytes = period_size * 2;
 
 	/* Need to set the first buffer in order to get interrupt */
 	abe_set_ping_pong_buffer(MM_DL_PORT, period_size);

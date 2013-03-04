@@ -1339,7 +1339,6 @@ static struct snd_soc_dai_ops omap_abe_dai_ops = {
 static struct snd_soc_dai_driver omap_abe_dai[] = {
 	{	/* Multimedia Playback and Capture */
 		.name = "MultiMedia1",
-		.probe = omap_abe_dai_probe,
 		.remove = omap_abe_dai_remove,
 		.suspend = omap_abe_dai_suspend,
 		.resume = omap_abe_dai_resume,
@@ -1347,7 +1346,7 @@ static struct snd_soc_dai_driver omap_abe_dai[] = {
 			.stream_name = "MultiMedia1 Playback",
 			.channels_min = 1,
 			.channels_max = 2,
-			.rates = SNDRV_PCM_RATE_48000 | SNDRV_PCM_RATE_44100,
+			.rates = SNDRV_PCM_RATE_48000,
 			.formats = OMAP_ABE_FORMATS,
 		},
 		.capture = {
@@ -1400,7 +1399,7 @@ static struct snd_soc_dai_driver omap_abe_dai[] = {
 			.stream_name = "Tones Playback",
 			.channels_min = 1,
 			.channels_max = 2,
-			.rates = SNDRV_PCM_RATE_48000 | SNDRV_PCM_RATE_44100,
+			.rates = SNDRV_PCM_RATE_48000,
 			.formats = OMAP_ABE_FORMATS,
 		},
 		.ops = &omap_abe_dai_ops,
@@ -1440,6 +1439,7 @@ static struct snd_soc_dai_driver omap_abe_dai[] = {
 	},
 	{	/* Low Power HiFi Playback */
 		.name = "MultiMedia1 LP",
+		.probe = omap_abe_dai_probe,
 		.suspend = omap_abe_dai_suspend,
 		.resume = omap_abe_dai_resume,
 		.playback = {

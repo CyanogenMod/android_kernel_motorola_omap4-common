@@ -154,15 +154,19 @@ int omap_abe_port_enable(struct abe *abe, struct omap_abe_port *port)
 	unsigned long flags;
 
 	/* only enable the physical port iff it is disabled */
+#ifdef CONFIG_DEBUG_FS
 	pr_debug("port %s increment count %d\n",
 			lport_name[port->logical_id], port->users);
+#endif
 
 	spin_lock_irqsave(&abe->lock, flags);
 	if (port->users == 0 && port_get_num_users(abe, port) == 0) {
 
 		/* enable the physical port */
+#ifdef CONFIG_DEBUG_FS
 		pr_debug("port %s phy port %d enabled\n",
 			lport_name[port->logical_id], port->physical_id);
+#endif
 		abe_enable_data_transfer(port->physical_id);
 	}
 
@@ -185,18 +189,24 @@ int omap_abe_port_disable(struct abe *abe, struct omap_abe_port *port)
 	unsigned long flags;
 
 	/* only disable the port iff no other users are using it */
+#ifdef CONFIG_DEBUG_FS
 	pr_debug("port %s decrement count %d\n",
 			lport_name[port->logical_id], port->users);
+#endif
 
 	spin_lock_irqsave(&abe->lock, flags);
 
+#ifdef CONFIG_DEBUG_FS
 	WARN(!port->users, "port %s phy port %d is already disabled\n",
 		lport_name[port->logical_id], port->physical_id);
+#endif
 
 	if (port->users == 1 && port_get_num_users(abe, port) == 1) {
 		/* disable the physical port */
+#ifdef CONFIG_DEBUG_FS
 		pr_debug("port %s phy port %d disabled\n",
 			lport_name[port->logical_id], port->physical_id);
+#endif
 
 		abe_disable_data_transfer(port->physical_id);
 	}
@@ -253,9 +263,9 @@ struct omap_abe_port *omap_abe_port_open(struct abe *abe, int logical_id)
 	sprintf(debug_fs_name, "%s_users", lport_name[logical_id]);
 	port->debugfs_lusers = debugfs_create_u32(debug_fs_name, 0644,
 			abe->debugfs_root, &port->users);
-#endif
 
 	pr_debug("opened port %s\n", lport_name[logical_id]);
+#endif
 	return port;
 }
 EXPORT_SYMBOL(omap_abe_port_open);
@@ -276,7 +286,9 @@ void omap_abe_port_close(struct abe *abe, struct omap_abe_port *port)
 	list_del(&port->list);
 	spin_unlock_irqrestore(&abe->lock, flags);
 
+#ifdef CONFIG_DEBUG_FS
 	pr_debug("closed port %s\n", lport_name[port->logical_id]);
+#endif
 	kfree(port);
 }
 EXPORT_SYMBOL(omap_abe_port_close);
@@ -305,7 +317,9 @@ static struct abe *omap_abe_port_mgr_init(void)
 
 static void omap_abe_port_mgr_free(struct abe *abe)
 {
+#ifdef CONFIG_DEBUG_FS
 	debugfs_remove_recursive(abe->debugfs_root);
+#endif
 	kfree(abe);
 	the_abe = NULL;
 }

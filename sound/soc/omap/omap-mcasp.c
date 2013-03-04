@@ -403,10 +403,22 @@ static int omap_mcasp_setup(struct omap_mcasp *mcasp, unsigned int rate)
 	 * setting. Lookup the appropriate dividers for the sampling
 	 * frequency that we are playing.
 	 */
-	res = mcasp_compute_clock_dividers(clk_get_rate(mcasp->fclk),
-				rate,
-				&aclkxdiv,
-				&ahclkxdiv);
+
+	/* Unfortunately TI release doesn't support 44.1Khz S/PDIF, so
+	   hard-code values for Motsnd configuration as a special case.
+	   Note that this depends on platform driver making the
+	   necessary changes to ABE DPLL rate */
+	if (rate == 44100) {
+		res = 0;
+		aclkxdiv = 0;
+		ahclkxdiv = 3;
+	} else {
+		res = mcasp_compute_clock_dividers(clk_get_rate(mcasp->fclk),
+					rate,
+					&aclkxdiv,
+					&ahclkxdiv);
+	}
+
 	if (res) {
 		dev_err(mcasp->dev,
 			"%s: No valid McASP config for sampling rate (%d)!\n",

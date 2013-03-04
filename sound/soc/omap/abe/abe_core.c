@@ -254,10 +254,6 @@ int omap_abe_set_ping_pong_buffer(struct omap_abe *abe, u32 port, u32 n_bytes)
 			(u32) &(desc_pp);
 		base_and_size = desc_pp.nextbuff1_BaseAddr;
 	}
-
-	base_and_size = abe->pp_buf_addr[abe->pp_buf_id_next];
-	abe->pp_buf_id_next = (abe->pp_buf_id_next + 1) & 0x03;
-
 	base_and_size = (base_and_size & 0xFFFFL) + (n_samples << 16);
 	sio_pp_desc_address = OMAP_ABE_D_PINGPONGDESC_ADDR + struct_offset;
 	src = &base_and_size;
@@ -338,13 +334,6 @@ int omap_abe_init_ping_pong_buffer(struct omap_abe *abe,
 		/* base addresses of the ping pong buffers in U8 unit */
 		abe_base_address_pingpong[i] = dmem_addr;
 	}
-
-	for (i = 0; i < 4; i++)
-		abe->pp_buf_addr[i] = OMAP_ABE_D_PING_ADDR + (i * size_bytes);
-	abe->pp_buf_id = 0;
-	abe->pp_buf_id_next = 0;
-	abe->pp_first_irq = 1;
-
 	/* global data */
 	abe_size_pingpong = size_bytes;
 	*p = (u32) OMAP_ABE_D_PING_ADDR;
@@ -382,27 +371,29 @@ int omap_abe_read_offset_from_ping_buffer(struct omap_abe *abe,
 		   the value of the counter */
 		if ((desc_pp.counter & 0x1) == 0) {
 			/* the next is buffer0, hence the current is buffer1 */
-			*n = desc_pp.nextbuff1_Samples -
-				desc_pp.workbuff_Samples;
+			switch (abe_port[OMAP_ABE_MM_DL_PORT].format.samp_format) {
+			case MONO_MSB:
+			case MONO_RSHIFTED_16:
+			case STEREO_16_16:
+				*n = abe_size_pingpong / 4 +
+					desc_pp.nextbuff1_Samples -
+					desc_pp.workbuff_Samples;
+				break;
+			case STEREO_MSB:
+			case STEREO_RSHIFTED_16:
+				*n = abe_size_pingpong / 8 +
+					desc_pp.nextbuff1_Samples -
+					desc_pp.workbuff_Samples;
+				break;
+			default:
+				omap_abe_dbg_error(abe, OMAP_ABE_ERR_API,
+						   ABE_PARAMETER_ERROR);
+				break;
+			}
 		} else {
 			/* the next is buffer1, hence the current is buffer0 */
 			*n = desc_pp.nextbuff0_Samples -
 				desc_pp.workbuff_Samples;
-		}
-		switch (abe_port[OMAP_ABE_MM_DL_PORT].format.samp_format) {
-		case MONO_MSB:
-		case MONO_RSHIFTED_16:
-		case STEREO_16_16:
-			*n +=  abe->pp_buf_id * abe_size_pingpong / 4;
-			break;
-		case STEREO_MSB:
-		case STEREO_RSHIFTED_16:
-			*n += abe->pp_buf_id * abe_size_pingpong / 8;
-			break;
-		default:
-			omap_abe_dbg_error(abe, OMAP_ABE_ERR_API,
-					   ABE_PARAMETER_ERROR);
-			return -EINVAL;
 		}
 	}
 
@@ -578,6 +569,313 @@ int omap_abe_set_opp_processing(struct omap_abe *abe, u32 opp)
 
 }
 EXPORT_SYMBOL(omap_abe_set_opp_processing);
+
+/**
+ * omap_abe_reset_vx_ul_src_filters - reset VX-UL port SRC filters
+ *
+ * it is assumed that filters are located in SMEM
+ */
+int omap_abe_reset_vx_ul_src_filters(struct omap_abe *abe)
+{
+	if (abe_port[OMAP_ABE_VX_UL_PORT].format.f == 8000) {
+		omap_abe_reset_mem(abe, OMAP_ABE_SMEM,
+				OMAP_ABE_S_VX_UL_48_8_LP_DATA_ADDR,
+				OMAP_ABE_S_VX_UL_48_8_LP_DATA_SIZE);
+		omap_abe_reset_mem(abe, OMAP_ABE_SMEM,
+				OMAP_ABE_S_VX_UL_48_8_HP_DATA_ADDR,
+				OMAP_ABE_S_VX_UL_48_8_HP_DATA_SIZE);
+	} else if (abe_port[OMAP_ABE_VX_UL_PORT].format.f == 16000) {
+		omap_abe_reset_mem(abe, OMAP_ABE_SMEM,
+				OMAP_ABE_S_VX_UL_48_16_LP_DATA_ADDR,
+				OMAP_ABE_S_VX_UL_48_16_LP_DATA_SIZE);
+		omap_abe_reset_mem(abe, OMAP_ABE_SMEM,
+				OMAP_ABE_S_VX_UL_48_16_HP_DATA_ADDR,
+				OMAP_ABE_S_VX_UL_48_16_HP_DATA_SIZE);
+	}
+	return 0;
+}
+EXPORT_SYMBOL(omap_abe_reset_vx_ul_src_filters);
+
+/**
+ * omap_abe_reset_mic_ul_src_filters - reset AMIC or DMICs or BT UL SRC filters
+ *
+ * it is assumed that filters are located in SMEM
+ */
+int omap_abe_reset_mic_ul_src_filters(struct omap_abe *abe)
+{
+	u16 vx[NBROUTE_UL];
+
+	omap_abe_mem_read(abe, OMAP_ABE_DMEM,
+			OMAP_ABE_D_AUPLINKROUTING_ADDR,
+			(u32 *)vx, OMAP_ABE_D_AUPLINKROUTING_SIZE);
+
+	switch (vx[12]) {
+	case ZERO_labelID:
+		/* no MIC used */
+		return 0;
+	case DMIC1_L_labelID:
+	case DMIC1_R_labelID:
+		/* DMIC0 used */
+		omap_abe_reset_mem(abe, OMAP_ABE_SMEM,
+				OMAP_ABE_S_DMIC0_96_48_DATA_ADDR,
+				OMAP_ABE_S_DMIC0_96_48_DATA_SIZE);
+		break;
+	case DMIC2_L_labelID:
+	case DMIC2_R_labelID:
+		/* DMIC1 used */
+		omap_abe_reset_mem(abe, OMAP_ABE_SMEM,
+				OMAP_ABE_S_DMIC1_96_48_DATA_ADDR,
+				OMAP_ABE_S_DMIC1_96_48_DATA_SIZE);
+		break;
+	case DMIC3_L_labelID:
+	case DMIC3_R_labelID:
+		/* DMIC2 used */
+		omap_abe_reset_mem(abe, OMAP_ABE_SMEM,
+				OMAP_ABE_S_DMIC2_96_48_DATA_ADDR,
+				OMAP_ABE_S_DMIC2_96_48_DATA_SIZE);
+		break;
+	case BT_UL_L_labelID:
+	case BT_UL_R_labelID:
+		/* BT MIC used */
+		if (abe_port[OMAP_ABE_BT_VX_UL_PORT].format.f == 8000) {
+			omap_abe_reset_mem(abe, OMAP_ABE_SMEM,
+					OMAP_ABE_S_BT_UL_8_48_HP_DATA_ADDR,
+					OMAP_ABE_S_BT_UL_8_48_HP_DATA_SIZE);
+			omap_abe_reset_mem(abe, OMAP_ABE_SMEM,
+					OMAP_ABE_S_BT_UL_8_48_LP_DATA_ADDR,
+					OMAP_ABE_S_BT_UL_8_48_LP_DATA_SIZE);
+		} else if (abe_port[OMAP_ABE_BT_VX_UL_PORT].format.f == 16000) {
+			omap_abe_reset_mem(abe, OMAP_ABE_SMEM,
+					OMAP_ABE_S_BT_UL_16_48_HP_DATA_ADDR,
+					OMAP_ABE_S_BT_UL_16_48_HP_DATA_SIZE);
+			omap_abe_reset_mem(abe, OMAP_ABE_SMEM,
+					OMAP_ABE_S_BT_UL_16_48_LP_DATA_ADDR,
+					OMAP_ABE_S_BT_UL_16_48_LP_DATA_SIZE);
+		}
+		break;
+	case AMIC_L_labelID:
+	case AMIC_R_labelID:
+		/* AMIC used */
+		omap_abe_reset_mem(abe, OMAP_ABE_SMEM,
+				OMAP_ABE_S_AMIC_96_48_DATA_ADDR,
+				OMAP_ABE_S_AMIC_96_48_DATA_SIZE);
+		break;
+	default:
+		break;
+	}
+	return 0;
+}
+EXPORT_SYMBOL(omap_abe_reset_mic_ul_src_filters);
+
+/**
+ * omap_abe_reset_vx_dl_src_filters - reset VX-DL port SRC filters
+ *
+ * it is assumed that filters are located in SMEM
+ */
+int omap_abe_reset_vx_dl_src_filters(struct omap_abe *abe)
+{
+	if (abe_port[OMAP_ABE_VX_DL_PORT].format.f == 8000) {
+		omap_abe_reset_mem(abe, OMAP_ABE_SMEM,
+				OMAP_ABE_S_VX_DL_8_48_HP_DATA_ADDR,
+				OMAP_ABE_S_VX_DL_8_48_HP_DATA_SIZE);
+		omap_abe_reset_mem(abe, OMAP_ABE_SMEM,
+				OMAP_ABE_S_VX_DL_8_48_LP_DATA_ADDR,
+				OMAP_ABE_S_VX_DL_8_48_LP_DATA_SIZE);
+	} else if (abe_port[OMAP_ABE_VX_DL_PORT].format.f == 16000) {
+		omap_abe_reset_mem(abe, OMAP_ABE_SMEM,
+				OMAP_ABE_S_VX_DL_16_48_HP_DATA_ADDR,
+				OMAP_ABE_S_VX_DL_16_48_HP_DATA_SIZE);
+		omap_abe_reset_mem(abe, OMAP_ABE_SMEM,
+				OMAP_ABE_S_VX_DL_16_48_LP_DATA_ADDR,
+				OMAP_ABE_S_VX_DL_16_48_LP_DATA_SIZE);
+	}
+	return 0;
+}
+EXPORT_SYMBOL(omap_abe_reset_vx_dl_src_filters);
+
+/**
+ * omap_abe_reset_dl1_src_filters - reset DL1 path filters
+ *
+ * it is assumed that filters are located in SMEM
+ */
+int omap_abe_reset_dl1_src_filters(struct omap_abe *abe)
+{
+	omap_abe_reset_mem(abe, OMAP_ABE_SMEM,
+			OMAP_ABE_S_DL1_M_EQ_DATA_ADDR,
+			OMAP_ABE_S_DL1_M_EQ_DATA_SIZE);
+	omap_abe_reset_mem(abe, OMAP_ABE_SMEM,
+			OMAP_ABE_S_EARP_48_96_LP_DATA_ADDR,
+			OMAP_ABE_S_EARP_48_96_LP_DATA_SIZE);
+	return 0;
+}
+EXPORT_SYMBOL(omap_abe_reset_dl1_src_filters);
+
+/**
+ * omap_abe_reset_dl2_src_filters - reset DL2 path filters
+ *
+ * it is assumed that filters are located in SMEM
+ */
+int omap_abe_reset_dl2_src_filters(struct omap_abe *abe)
+{
+	omap_abe_reset_mem(abe, OMAP_ABE_SMEM,
+			OMAP_ABE_S_DL2_M_LR_EQ_DATA_ADDR,
+			OMAP_ABE_S_DL2_M_LR_EQ_DATA_SIZE);
+	omap_abe_reset_mem(abe, OMAP_ABE_SMEM,
+			OMAP_ABE_S_IHF_48_96_LP_DATA_ADDR,
+			OMAP_ABE_S_IHF_48_96_LP_DATA_SIZE);
+	return 0;
+}
+EXPORT_SYMBOL(omap_abe_reset_dl2_src_filters);
+
+/**
+ * omap_abe_reset_bt_dl_src_filters - reset bluetooth DL SRC path filters
+ *
+ * it is assumed that filters are located in SMEM
+ */
+int omap_abe_reset_bt_dl_src_filters(struct omap_abe *abe)
+{
+	if (abe_port[OMAP_ABE_BT_VX_DL_PORT].format.f == 8000) {
+		omap_abe_reset_mem(abe, OMAP_ABE_SMEM,
+				OMAP_ABE_S_BT_DL_48_8_LP_DATA_ADDR,
+				OMAP_ABE_S_BT_DL_48_8_LP_DATA_SIZE);
+		omap_abe_reset_mem(abe, OMAP_ABE_SMEM,
+				OMAP_ABE_S_BT_DL_48_8_HP_DATA_ADDR,
+				OMAP_ABE_S_BT_DL_48_8_HP_DATA_SIZE);
+	} else if (abe_port[OMAP_ABE_BT_VX_DL_PORT].format.f == 16000) {
+		omap_abe_reset_mem(abe, OMAP_ABE_SMEM,
+				OMAP_ABE_S_BT_DL_48_16_LP_DATA_ADDR,
+				OMAP_ABE_S_BT_DL_48_16_LP_DATA_SIZE);
+		omap_abe_reset_mem(abe, OMAP_ABE_SMEM,
+				OMAP_ABE_S_BT_DL_48_16_HP_DATA_ADDR,
+				OMAP_ABE_S_BT_DL_48_16_HP_DATA_SIZE);
+	}
+	return 0;
+}
+EXPORT_SYMBOL(omap_abe_reset_bt_dl_src_filters);
+
+/**
+ * abe_check_filter_is_saturating
+ * @abe: pointer to omap_abe struct
+ * @address: filter address
+ * @size: filter size in byte
+ *
+ * Check if filter is saturating
+ * it is assumed that filter is located in SMEM
+ * if saturated return 1 otherwise 0.
+ */
+int abe_check_filter_is_saturating(struct omap_abe *abe, u32 address, u32 size)
+{
+	/* largest buffer size among all filter buffers in SMEM */
+	u32 filter[OMAP_ABE_S_XINASRC_UL_VX_SIZE >> 2];
+	int found = 0, i = 0;
+
+	omap_abe_mem_read(abe, ABE_SMEM, address, filter, size);
+
+	size >>= 2;
+	while ((i < size) && (filter[i] < 0x700000 || filter[i] > 0x900000))
+		i++;
+
+	if (i < size)
+		found = 1;
+
+	return found;
+}
+
+/**
+ * abe_ul_src_filters_saturation_monitoring - monitor ABE UL SRC filters and
+ * check if some are saturating, if it's the case then reset these filters.
+ *
+ * it is assumed that filter is located in SMEM
+ */
+void abe_ul_src_filters_saturation_monitoring(struct omap_abe *abe)
+{
+	int saturating = 0;
+	u16 vx[NBROUTE_UL];
+
+	omap_abe_mem_read(abe, ABE_DMEM,
+			OMAP_ABE_D_AUPLINKROUTING_ADDR,
+			(u32 *)vx, OMAP_ABE_D_AUPLINKROUTING_SIZE);
+
+	switch (vx[12]) {
+	case ZERO_labelID:
+		/* no MIC used */
+		return;
+	case DMIC1_L_labelID:
+	case DMIC1_R_labelID:
+		/* DMIC0 used */
+		saturating = abe_check_filter_is_saturating(abe,
+						OMAP_ABE_S_DMIC1_ADDR,
+						OMAP_ABE_S_DMIC1_SIZE);
+		break;
+	case DMIC2_L_labelID:
+	case DMIC2_R_labelID:
+		/* DMIC1 used */
+		saturating = abe_check_filter_is_saturating(abe,
+						OMAP_ABE_S_DMIC2_ADDR,
+						OMAP_ABE_S_DMIC2_SIZE);
+		break;
+	case DMIC3_L_labelID:
+	case DMIC3_R_labelID:
+		/* DMIC2 used */
+		saturating = abe_check_filter_is_saturating(abe,
+						OMAP_ABE_S_DMIC3_ADDR,
+						OMAP_ABE_S_DMIC3_SIZE);
+		break;
+	case BT_UL_L_labelID:
+	case BT_UL_R_labelID:
+		/* BT MIC used */
+		saturating = abe_check_filter_is_saturating(abe,
+						OMAP_ABE_S_BT_UL_ADDR,
+						OMAP_ABE_S_BT_UL_SIZE);
+		break;
+	case AMIC_L_labelID:
+	case AMIC_R_labelID:
+		/* AMIC used */
+		saturating = abe_check_filter_is_saturating(abe,
+						OMAP_ABE_S_AMIC_ADDR,
+						OMAP_ABE_S_AMIC_SIZE);
+		break;
+	default:
+		return;
+	}
+
+	if (saturating) {
+		omap_abe_reset_mic_ul_src_filters(abe);
+		omap_abe_reset_vx_ul_src_filters(abe);
+	}
+}
+
+/**
+ * abe_vx_dl_src_filters_saturation_monitoring - monitor ABE VX-DL SRC filters and
+ * check if some are saturating, if it's the case then reset these filters.
+ *
+ * it is assumed that filter is located in SMEM
+ */
+void abe_vx_dl_src_filters_saturation_monitoring(struct omap_abe *abe)
+{
+	if (abe_check_filter_is_saturating(abe, OMAP_ABE_S_VX_DL_ADDR,
+					OMAP_ABE_S_VX_DL_SIZE)) {
+		omap_abe_reset_vx_dl_src_filters(abe);
+		omap_abe_reset_dl1_src_filters(abe);
+		omap_abe_reset_dl2_src_filters(abe);
+	}
+
+	if (abe_check_filter_is_saturating(abe, OMAP_ABE_S_BT_DL_ADDR,
+					OMAP_ABE_S_BT_DL_SIZE))
+		omap_abe_reset_bt_dl_src_filters(abe);
+}
+
+/**
+ * abe_src_filters_saturation_monitoring - monitor ABE SRC filters and
+ * check if some are saturating, if it's the case then reset these filters.
+ *
+ * it is assumed that filter is located in SMEM
+ */
+void omap_abe_src_filters_saturation_monitoring(struct omap_abe *abe)
+{
+	abe_ul_src_filters_saturation_monitoring(abe);
+	abe_vx_dl_src_filters_saturation_monitoring(abe);
+}
 
 /**
  * omap_abe_check_activity - Check if some ABE activity.

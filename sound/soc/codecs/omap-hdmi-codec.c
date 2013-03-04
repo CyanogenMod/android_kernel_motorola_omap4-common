@@ -27,6 +27,7 @@
 #include <linux/gpio.h>
 #include <linux/platform_device.h>
 #include <linux/slab.h>
+#include <linux/clk.h>
 
 #include <sound/core.h>
 #include <sound/pcm.h>
@@ -55,6 +56,14 @@ struct hdmi_params {
 	int channels_nr;
 };
 
+static struct {
+	struct clk *sys_clk;
+	struct clk *hdmi_clk;
+	int runtime_count;
+	struct snd_pcm_substream *substream;
+	int video_active;
+	struct mutex video_mutex; /* to sync audio and video operation */
+} hdmi_clk;
 
 /* codec private data */
 struct hdmi_codec_data {
@@ -70,6 +79,65 @@ struct hdmi_codec_data {
 	int active;
 } hdmi_data;
 
+static int hdmi_audio_get_clocks(struct platform_device *pdev)
+{
+	struct clk *clk;
+
+	clk = clk_get(&pdev->dev, "sys_clk");
+	if (IS_ERR(clk)) {
+		printk(KERN_ERR "audio hdmi codec: can't get sys_clk\n");
+		return PTR_ERR(clk);
+	}
+
+	hdmi_clk.sys_clk = clk;
+
+	clk = clk_get(&pdev->dev, "hdmi_clk");
+	if (IS_ERR(clk)) {
+		printk(KERN_ERR "audio hdmi codec: can't get hdmi_clk\n");
+		clk_put(hdmi_clk.sys_clk);
+		return PTR_ERR(clk);
+	}
+
+	hdmi_clk.hdmi_clk = clk;
+
+	return 0;
+}
+
+static int hdmi_audio_runtime_get(void)
+{
+	int ret;
+
+	if (hdmi_clk.runtime_count++ == 0) {
+		ret = dss_runtime_get();
+		if (ret)
+			return ret;
+
+		clk_enable(hdmi_clk.sys_clk);
+		clk_enable(hdmi_clk.hdmi_clk);
+
+		/*Need to investigate if this is needed...
+		ret = pm_runtime_get_sync(&hdmi_clk.pdev->dev);
+		WARN_ON(ret);
+		if (ret < 0)
+			goto err_runtime_get; */
+	}
+
+	return 0;
+}
+
+static void hdmi_audio_runtime_put(void)
+{
+
+	if (--hdmi_clk.runtime_count == 0) {
+		/*ret = pm_runtime_put_sync(&hdmi_clk.pdev->dev);
+		WARN_ON(ret); */
+
+		clk_disable(hdmi_clk.sys_clk);
+		clk_disable(hdmi_clk.hdmi_clk);
+		dss_runtime_put();
+	}
+}
+
 
 static int hdmi_audio_set_configuration(struct hdmi_codec_data *priv)
 {
@@ -80,6 +148,9 @@ static int hdmi_audio_set_configuration(struct hdmi_codec_data *priv)
 	int err, n, cts, channel_alloc;
 	enum hdmi_core_audio_sample_freq sample_freq;
 	u32 pclk = omapdss_hdmi_get_pixel_clock();
+	struct omap_chip_id audio_must_use_mclk;
+
+	audio_must_use_mclk.oc = CHIP_IS_OMAP4430ES2_3 | CHIP_IS_OMAP446X;
 
 	switch (priv->params.format) {
 	case SNDRV_PCM_FORMAT_S16_LE:
@@ -127,8 +198,10 @@ static int hdmi_audio_set_configuration(struct hdmi_codec_data *priv)
 		return -EINVAL;
 	}
 
+	hdmi_audio_runtime_get();
 	err = hdmi_ti_4xxx_config_audio_acr(&priv->ip_data,
 			priv->params.sample_freq, &n, &cts, pclk);
+	hdmi_audio_runtime_put();
 	if (err < 0)
 		return err;
 
@@ -142,8 +215,10 @@ static int hdmi_audio_set_configuration(struct hdmi_codec_data *priv)
 	audio_dma->mode = HDMI_AUDIO_TRANSF_DMA;
 	audio_dma->fifo_threshold = 0x20; /* in number of samples */
 
+	hdmi_audio_runtime_get();
 	hdmi_ti_4xxx_wp_audio_config_dma(&priv->ip_data, audio_dma);
 	hdmi_ti_4xxx_wp_audio_config_format(&priv->ip_data, audio_format);
+	hdmi_audio_runtime_put();
 
 	/*
 	 * I2S config
@@ -167,7 +242,7 @@ static int hdmi_audio_set_configuration(struct hdmi_codec_data *priv)
 	if (dss_has_feature(FEAT_HDMI_CTS_SWMODE)) {
 		core_cfg->aud_par_busclk = 0;
 		core_cfg->cts_mode = HDMI_AUDIO_CTS_MODE_SW;
-		core_cfg->use_mclk = cpu_is_omap446x();
+		core_cfg->use_mclk = omap_chip_is(audio_must_use_mclk);
 	} else {
 		core_cfg->aud_par_busclk = (((128 * 31) - 1) << 8);
 		core_cfg->cts_mode = HDMI_AUDIO_CTS_MODE_HW;
@@ -220,8 +295,10 @@ static int hdmi_audio_set_configuration(struct hdmi_codec_data *priv)
 		return -EINVAL;
 	}
 
+	hdmi_audio_runtime_get();
 	hdmi_ti_4xxx_core_audio_config(&priv->ip_data, core_cfg);
 	hdmi_ti_4xxx_wp_audio_config_format(&priv->ip_data, audio_format);
+	hdmi_audio_runtime_put();
 
 	/*
 	 * Configure packet
@@ -235,7 +312,9 @@ static int hdmi_audio_set_configuration(struct hdmi_codec_data *priv)
 	aud_if_cfg->db5_downmix_inh = false;
 	aud_if_cfg->db5_lsv = 0;
 
+	hdmi_audio_runtime_get();
 	hdmi_ti_4xxx_core_audio_infoframe_config(&priv->ip_data, aud_if_cfg);
+	hdmi_audio_runtime_put();
 	return 0;
 
 }
@@ -245,8 +324,12 @@ int hdmi_audio_notifier_callback(struct notifier_block *nb,
 {
 	enum omap_dss_display_state state = arg;
 
+	mutex_lock(&hdmi_clk.video_mutex);
+
 	if (state == OMAP_DSS_DISPLAY_ACTIVE) {
+		hdmi_clk.video_active = 1;
 		/* this happens just after hdmi_power_on */
+		hdmi_audio_runtime_get();
 		if (hdmi_data.active)
 			hdmi_ti_4xxx_audio_enable(&hdmi_data.ip_data, 0);
 		hdmi_audio_set_configuration(&hdmi_data);
@@ -256,7 +339,34 @@ int hdmi_audio_notifier_callback(struct notifier_block *nb,
 			hdmi_ti_4xxx_audio_enable(&hdmi_data.ip_data, 1);
 
 		}
+		hdmi_audio_runtime_put();
+	} else if (state == OMAP_DSS_DISPLAY_DISABLED) {
+		/* this happens after hotplug unplug */
+
+		struct snd_soc_pcm_runtime *rtd = NULL;
+		struct snd_soc_codec *codec = NULL;
+		struct hdmi_codec_data *priv = NULL;
+
+		hdmi_clk.video_active = 0;
+
+		if (hdmi_clk.substream) {
+			rtd = hdmi_clk.substream->private_data;
+			codec = rtd->codec;
+			priv = snd_soc_codec_get_drvdata(codec);
+			snd_pcm_stop(hdmi_clk.substream,
+				SNDRV_PCM_STATE_DISCONNECTED);
+
+			priv->active = 0;
+			hdmi_audio_runtime_get();
+
+			hdmi_ti_4xxx_audio_enable(&priv->ip_data, 0);
+			omap_hwmod_set_slave_idlemode(priv->oh,
+						HWMOD_IDLEMODE_SMART_WKUP);
+			hdmi_audio_runtime_put();
+		}
 	}
+	mutex_unlock(&hdmi_clk.video_mutex);
+
 	return 0;
 }
 
@@ -291,19 +401,27 @@ static int hdmi_audio_trigger(struct snd_pcm_substream *substream, int cmd,
 	case SNDRV_PCM_TRIGGER_START:
 	case SNDRV_PCM_TRIGGER_RESUME:
 	case SNDRV_PCM_TRIGGER_PAUSE_RELEASE:
+		if (hdmi_clk.video_active == 0) {
+			err = -ENODEV;
+			return err;
+		}
+
 		/*
 		 * switch to no-idle to avoid DSS_L3_ICLK clock
 		 * to be shutdown during audio activity (as per TRM)
 		 */
+		hdmi_audio_runtime_get();
 		omap_hwmod_set_slave_idlemode(priv->oh,
 			HWMOD_IDLEMODE_NO);
 		hdmi_ti_4xxx_audio_enable(&priv->ip_data, 1);
+		hdmi_audio_runtime_put();
 		priv->active = 1;
 		break;
 	case SNDRV_PCM_TRIGGER_STOP:
 	case SNDRV_PCM_TRIGGER_SUSPEND:
 	case SNDRV_PCM_TRIGGER_PAUSE_PUSH:
 		priv->active = 0;
+		hdmi_audio_runtime_get();
 		hdmi_ti_4xxx_audio_enable(&priv->ip_data, 0);
 		/*
 		 * switch back to smart-idle & wakeup capable
@@ -311,6 +429,7 @@ static int hdmi_audio_trigger(struct snd_pcm_substream *substream, int cmd,
 		 */
 		omap_hwmod_set_slave_idlemode(priv->oh,
 			HWMOD_IDLEMODE_SMART_WKUP);
+		hdmi_audio_runtime_put();
 		break;
 	default:
 		err = -EINVAL;
@@ -321,12 +440,28 @@ static int hdmi_audio_trigger(struct snd_pcm_substream *substream, int cmd,
 static int hdmi_audio_startup(struct snd_pcm_substream *substream,
 				  struct snd_soc_dai *dai)
 {
+	mutex_lock(&hdmi_clk.video_mutex);
+	if (!hdmi_clk.video_active) {
+		mutex_unlock(&hdmi_clk.video_mutex);
+		printk(KERN_ERR "hdmi device not available\n");
+		return -ENODEV;
+	}
+	mutex_unlock(&hdmi_clk.video_mutex);
+
 	if (!omapdss_hdmi_get_mode()) {
 		pr_err("Current video settings do not support audio.\n");
 		return -EIO;
 	}
+	hdmi_clk.substream = substream;
+
 	return 0;
 }
+static void hdmi_audio_shutdown(struct snd_pcm_substream *substream,
+				  struct snd_soc_dai *dai)
+{
+	hdmi_clk.substream = NULL;
+}
+
 static int hdmi_probe(struct snd_soc_codec *codec)
 {
 	struct platform_device *pdev = to_platform_device(codec->dev);
@@ -360,6 +495,15 @@ static int hdmi_probe(struct snd_soc_codec *codec)
 		dev_err(&pdev->dev, "can't ioremap WP\n");
 		ret = -ENOMEM;
 		goto res_err;
+	}
+
+	hdmi_clk.substream = NULL;
+	hdmi_clk.video_active = 0;
+	mutex_init(&hdmi_clk.video_mutex);
+	ret = hdmi_audio_get_clocks(pdev);
+	if (ret) {
+		iounmap(hdmi_data.ip_data.base_wp);
+		return ret;
 	}
 
 	hdmi_data.ip_data.hdmi_core_sys_offset = HDMI_CORE_SYS;
@@ -409,6 +553,7 @@ static struct snd_soc_dai_ops hdmi_audio_codec_ops = {
 	.hw_params = hdmi_audio_hw_params,
 	.trigger = hdmi_audio_trigger,
 	.startup = hdmi_audio_startup,
+	.shutdown = hdmi_audio_shutdown,
 };
 
 static struct snd_soc_dai_driver hdmi_codec_dai_drv = {

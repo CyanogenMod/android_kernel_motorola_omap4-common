@@ -17,8 +17,8 @@ config ARCH_OMAP2PLUS_TYPICAL
 	select I2C_OMAP
 	select MFD_SUPPORT
 	select MENELAUS if ARCH_OMAP2
-	select TWL4030_CORE if ARCH_OMAP3 || ARCH_OMAP4
-	select TWL4030_POWER if ARCH_OMAP3 || ARCH_OMAP4
+	select TWL4030_CORE if ARCH_OMAP3 || ARCH_OMAP4 && !MACH_MAPPHONE
+	select TWL4030_POWER if ARCH_OMAP3 || ARCH_OMAP4 && !MACH_MAPPHONE
 	help
 	  Compile a kernel suitable for booting most boards
 
@@ -365,6 +365,25 @@ config MACH_OMAP4_PANDA
 	select OMAP_PACKAGE_CBS
 	select REGULATOR_FIXED_VOLTAGE
 	select OMAP_TPS6236X
+	select OMAP_REBOOT_REASON
+	select OMAP_RAM_CONSOLE
+
+config MACH_MAPPHONE
+	bool "OMAP4 Motorola Android Platform phone"
+	depends on ARCH_OMAP4
+	select INPUT_MISC
+	select HWMON
+	select OMAP_PACKAGE_CBL
+	select OMAP_PACKAGE_CBS
+	select REGULATOR_FIXED_VOLTAGE
+	select OMAP_TPS6236X
+	select USE_OF
+	select OF_FLATTREE_HOST_BYTEORDER
+	select MFD_CPCAP
+	select CHARGER_CPCAP
+	select BATTERY_CPCAP
+	select REGULATOR_CPCAP
+	select RTC_DRV_CPCAP
 	select OMAP_REBOOT_REASON
 	select OMAP_RAM_CONSOLE
 

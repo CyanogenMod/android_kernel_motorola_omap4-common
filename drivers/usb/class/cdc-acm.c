@@ -486,11 +486,13 @@ static int acm_tty_open(struct tty_struct *tty, struct file *filp)
 	}
 
 	acm->ctrlurb->dev = acm->dev;
+#ifndef CONFIG_MACH_MAPPHONE
 	if (usb_submit_urb(acm->ctrlurb, GFP_KERNEL)) {
 		dev_err(&acm->control->dev,
 			"%s - usb_submit_urb(ctrl irq) failed\n", __func__);
 		goto bail_out;
 	}
+#endif
 
 	if (0 > acm_set_control(acm, acm->ctrlout = ACM_CTRL_DTR | ACM_CTRL_RTS) &&
 	    (acm->ctrl_caps & USB_CDC_CAP_LINE))
@@ -1353,7 +1355,9 @@ static int acm_resume(struct usb_interface *intf)
 
 	mutex_lock(&acm->mutex);
 	if (acm->port.count) {
+#ifndef CONFIG_MACH_MAPPHONE
 		rv = usb_submit_urb(acm->ctrlurb, GFP_NOIO);
+#endif
 
 		spin_lock_irq(&acm->write_lock);
 		if (acm->delayed_wb) {

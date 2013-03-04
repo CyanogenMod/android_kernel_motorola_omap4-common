@@ -2,6 +2,9 @@
 # Makefile for the linux kernel.
 #
 
+CFLAGS_REMOVE_common.o = -pg
+CFLAGS_REMOVE_io.o = -pg
+
 # Common support
 obj-y := id.o io.o control.o mux.o devices.o serial.o gpmc.o timer-gp.o pm.o \
 	 common.o gpio.o dma.o wd_timer.o omap_pmic.o dmtimer.o
@@ -272,6 +275,29 @@ obj-$(CONFIG_MACH_OMAP4_PANDA)		+= board-omap4panda.o \
 					   board-44xx-identity.o \
 					   omap4_apps_brd_id.o \
 					   omap_phy_internal.o
+
+obj-$(CONFIG_MACH_MAPPHONE)		+= board-mapphone.o \
+					   board-mapphone-uart.o \
+					   board-mapphone-gpio.o \
+					   board-mapphone-panel.o \
+					   board-mapphone-padconf.o \
+					   board-mapphone-spi.o \
+					   board-mapphone-sensors.o \
+					   board-mapphone-touch.o \
+					   board-mapphone-hsmmc.o \
+					   board-mapphone-cpcap-client.o \
+					   board-mapphone-keypad.o \
+					   board-mapphone-usb.o \
+					   board-mapphone-modem.o \
+					   board-mapphone-vibrator.o \
+					   board-mapphone-bpwake.o \
+					   board-44xx-identity.o \
+					   hsmmc.o \
+					   omap_phy_internal.o \
+					   omap4_apps_brd_id.o \
+					   pmic-fan5355.o	\
+					   pmic-max8952.o	\
+					   pmic-cpcap.o
 
 obj-$(CONFIG_MACH_OMAP3517EVM)		+= board-am3517evm.o \
 					   omap_phy_internal.o \

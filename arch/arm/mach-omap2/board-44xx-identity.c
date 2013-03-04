@@ -30,6 +30,7 @@
 #include <asm/mach/arch.h>
 
 #include "control.h"
+#include "board-mapphone.h"
 
 static ssize_t omap4_soc_family_show(struct kobject *kobj,
 				    struct kobj_attribute *attr, char *buf)
@@ -224,6 +225,13 @@ void __init omap4_create_board_props(void)
 	ret = sysfs_create_group(board_kobj, &omap4_board_prop_attr_group);
 	if (ret)
 		goto err_board_sysfs_create;
+
+	if (mapphone_touch_vkey_prop_attr_group) {
+		ret = sysfs_create_group(board_props_kobj,
+				mapphone_touch_vkey_prop_attr_group);
+		if (ret)
+			goto err_board_obj;
+	}
 
 	return;
 

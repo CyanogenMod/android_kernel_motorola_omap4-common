@@ -59,6 +59,8 @@
 #include "atags.h"
 #include "tcm.h"
 
+#include "../mach-omap2/board-mapphone.h"
+
 #ifndef MEM_SIZE
 #define MEM_SIZE	(16*1024*1024)
 #endif
@@ -131,6 +133,7 @@ EXPORT_SYMBOL(elf_platform);
 
 static const char *cpu_name;
 static const char *machine_name;
+static const char *cpu_tier;
 static char __initdata cmd_line[COMMAND_LINE_SIZE];
 struct machine_desc *machine_desc __initdata;
 
@@ -1041,9 +1044,36 @@ static const char *hwcap_str[] = {
 	NULL
 };
 
+#if defined(CONFIG_MACH_MAPPHONE)
+void __init set_machine_name(const char *name)
+{
+	machine_name = name;
+
+}
+
+void __init set_cpu_tier(const char *tier)
+{
+	cpu_tier = tier;
+}
+#endif
+
 static int c_show(struct seq_file *m, void *v)
 {
 	int i;
+
+#if defined(CONFIG_MACH_MAPPHONE)
+	static char *p;
+	int len = strlen(bp_model);
+
+	if (!p && len) {
+		p = kmalloc(strlen(machine_name) + len + 1, GFP_KERNEL);
+		if (p) {
+			*p = '\0';
+			strcat(p, machine_name);
+			machine_name = strcat(p, bp_model);
+		}
+	}
+#endif
 
 	seq_printf(m, "Processor\t: %s rev %d (%s)\n",
 		   cpu_name, read_cpuid_id() & 15, elf_platform);
@@ -1100,6 +1130,9 @@ static int c_show(struct seq_file *m, void *v)
 	seq_printf(m, "Revision\t: %04x\n", system_rev);
 	seq_printf(m, "Serial\t\t: %08x%08x\n",
 		   system_serial_high, system_serial_low);
+
+	if (cpu_tier)
+		seq_printf(m, "CPU Tier\t: %s\n", cpu_tier);
 
 	return 0;
 }

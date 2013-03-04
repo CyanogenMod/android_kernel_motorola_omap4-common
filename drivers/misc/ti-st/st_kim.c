@@ -512,12 +512,14 @@ long st_kim_stop(void *kim_data)
 
 	INIT_COMPLETION(kim_gdata->ldisc_installed);
 
+#if 0
 	if (tty) {	/* can be called before ldisc is installed */
 		/* Flush any pending characters in the driver and discipline. */
 		tty_ldisc_flush(tty);
 		tty_driver_flush_buffer(tty);
 		tty->ops->flush_buffer(tty);
 	}
+#endif
 
 	/* send uninstall notification to UIM */
 	pr_info("ldisc_install = 0");

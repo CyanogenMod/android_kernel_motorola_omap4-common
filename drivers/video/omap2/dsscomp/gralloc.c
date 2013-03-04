@@ -42,6 +42,34 @@ struct dsscomp_gralloc_t {
 /* queued gralloc compositions */
 static LIST_HEAD(flip_queue);
 
+int gralloc_flip_queue_updated;
+
+unsigned long dsscomp_flip_queue_length(void)
+{
+	struct dsscomp_gralloc_t *gsync, *gsync_;
+	unsigned long length = ~0;
+	mutex_lock(&mtx);
+	/* Wait until something has been added to the flip queue since
+	 * the last call to dsscomp_flip_queue_length_invalidate before
+	 * returning the length of the flip queue
+	 */
+	if (gralloc_flip_queue_updated) {
+		length = 0;
+		list_for_each_entry_safe(gsync, gsync_, &flip_queue, q) {
+			length++;
+		}
+	}
+	mutex_unlock(&mtx);
+	return length;
+}
+
+void dsscomp_flip_queue_length_invalidate(void)
+{
+	mutex_lock(&mtx);
+	gralloc_flip_queue_updated = 0;
+	mutex_unlock(&mtx);
+}
+
 static u32 ovl_use_mask[MAX_MANAGERS];
 
 static void unpin_tiler_blocks(struct list_head *slots)
@@ -88,8 +116,10 @@ static void dsscomp_gralloc_cb(void *data, int status)
 		}
 		if (gsync->refs.counter && gsync->cb_fn)
 			break;
-		if (gsync->refs.counter == 0)
+		if (gsync->refs.counter == 0) {
 			list_move_tail(&gsync->q, &done);
+			wake_up_all(&cdev->waitq_comp_complete);
+		}
 	}
 	mutex_unlock(&mtx);
 
@@ -160,7 +190,7 @@ int dsscomp_gralloc_queue(struct dsscomp_setup_dispc_data *d,
 	struct tiler1d_slot *slot = NULL;
 	u32 slot_used = 0;
 #ifdef CONFIG_DEBUG_FS
-	u32 ms = ktime_to_ms(ktime_get());
+	u32 ms = dsscomp_debug_log_timestamp();
 #endif
 	u32 channels[ARRAY_SIZE(d->mgrs)], ch;
 	int skip;
@@ -186,6 +216,8 @@ int dsscomp_gralloc_queue(struct dsscomp_setup_dispc_data *d,
 	gsync->early_callback = early_callback;
 	INIT_LIST_HEAD(&gsync->slots);
 	list_add_tail(&gsync->q, &flip_queue);
+	gralloc_flip_queue_updated = 1;
+	wake_up_all(&cdev->waitq_comp_complete);
 	if (debug & DEBUG_GRALLOC_PHASES)
 		dev_info(DEV(cdev), "[%p] queuing flip\n", gsync);
 
@@ -346,11 +378,21 @@ int dsscomp_gralloc_queue(struct dsscomp_setup_dispc_data *d,
 			goto skip_map1d;
 
 		if (!slot) {
-			if (down_timeout(&free_slots_sem,
-						msecs_to_jiffies(100))) {
-				dev_warn(DEV(cdev), "could not obtain tiler slot");
-				goto skip_buffer;
+			/* If no callback function supplied, then do not wait
+			 * for empty slots.  This allows disabling of vsync
+			 */
+			int no_slot;
+			if (cb_fn) {
+				no_slot = down_timeout(&free_slots_sem,
+						       msecs_to_jiffies(100));
+				if (no_slot)
+					dev_warn(DEV(cdev),
+						 "could not obtain tiler slot");
+			} else {
+				no_slot = down_trylock(&free_slots_sem);
 			}
+			if (no_slot)
+				goto skip_buffer;
 			mutex_lock(&mtx);
 			slot = list_first_entry(&free_slots, typeof(*slot), q);
 			list_move(&slot->q, &gsync->slots);

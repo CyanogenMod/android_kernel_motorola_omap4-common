@@ -39,6 +39,7 @@
 #include <linux/uaccess.h>
 #include <linux/elf.h>
 #include <linux/elfcore.h>
+#include <linux/kthread.h>
 #include <plat/remoteproc.h>
 
 /* list of available remote processors on this board */
@@ -1086,15 +1087,24 @@ exit:
 	return ret;
 }
 
-static void rproc_loader_cont(const struct firmware *fw, void *context)
+static void rproc_loader_defered(struct rproc *rproc)
 {
-	struct rproc *rproc = context;
+	const struct firmware *fw;
 	struct device *dev = rproc->dev;
 	const char *fwfile = rproc->firmware;
 	u64 bootaddr = 0;
 	struct fw_header *image;
 	struct fw_section *section;
 	int left, ret;
+	int count = 15;
+
+	/* wait until udev is up */
+	while (kobject_uevent(&dev->kobj, KOBJ_CHANGE))
+		msleep(1000);
+
+	/* sometimes FS is not mount yet, keep trying requesing the firmware */
+	while (request_firmware(&fw, fwfile, dev) && --count)
+		msleep(1000);
 
 	if (!fw) {
 		dev_err(dev, "%s: failed to load %s\n", __func__, fwfile);
@@ -1157,7 +1167,6 @@ static int rproc_loader(struct rproc *rproc)
 {
 	const char *fwfile = rproc->firmware;
 	struct device *dev = rproc->dev;
-	int ret;
 
 	if (!fwfile) {
 		dev_err(dev, "%s: no firmware to load\n", __func__);
@@ -1168,12 +1177,7 @@ static int rproc_loader(struct rproc *rproc)
 	 * allow building remoteproc as built-in kernel code, without
 	 * hanging the boot process
 	 */
-	ret = request_firmware_nowait(THIS_MODULE, FW_ACTION_HOTPLUG, fwfile,
-			dev, GFP_KERNEL, rproc, rproc_loader_cont);
-	if (ret < 0) {
-		dev_err(dev, "request_firmware_nowait failed: %d\n", ret);
-		return ret;
-	}
+	kthread_run((void *)rproc_loader_defered, rproc, "rproc_loader");
 
 	return 0;
 }

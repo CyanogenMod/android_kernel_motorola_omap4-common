@@ -27,6 +27,14 @@
 #include <linux/rslib.h>
 #endif
 
+#include <asm/bootinfo.h>
+
+#ifdef CONFIG_APANIC
+extern int has_apanic_dump;
+#endif
+#ifdef CONFIG_APANIC_MMC
+extern int has_apanic_mmc_dump;
+#endif
 struct ram_console_buffer {
 	uint32_t    sig;
 	uint32_t    start;
@@ -239,6 +247,18 @@ ram_console_save_old(struct ram_console_buffer *buffer, const char *bootinfo,
 	}
 }
 
+static int __is_sys_exception(void)
+{
+	int ret = 0;
+
+	if ((bi_powerup_reason() == PU_REASON_WDOG_AP_RESET) ||
+		(bi_powerup_reason() == PU_REASON_POWER_CUT) ||
+		(bi_powerup_reason() == PU_REASON_AP_KERNEL_PANIC))
+		ret = 1;
+
+	return ret;
+}
+
 static int __init ram_console_init(struct ram_console_buffer *buffer,
 				   size_t buffer_size, const char *bootinfo,
 				   char *old_buf)
@@ -298,7 +318,7 @@ static int __init ram_console_init(struct ram_console_buffer *buffer,
 	}
 #endif
 
-	if (buffer->sig == RAM_CONSOLE_SIG) {
+	if (__is_sys_exception()) {
 		if (buffer->size > ram_console_buffer_size
 		    || buffer->start > buffer->size)
 			printk(KERN_INFO "ram_console: found existing invalid "
@@ -310,10 +330,11 @@ static int __init ram_console_init(struct ram_console_buffer *buffer,
 			       buffer->size, buffer->start);
 			ram_console_save_old(buffer, bootinfo, old_buf);
 		}
-	} else {
+	}
+
+	if (buffer->sig != RAM_CONSOLE_SIG)
 		printk(KERN_INFO "ram_console: no valid data in buffer "
 		       "(sig = 0x%08x)\n", buffer->sig);
-	}
 
 	buffer->sig = RAM_CONSOLE_SIG;
 	buffer->start = 0;
@@ -410,6 +431,14 @@ static int __init ram_console_late_init(void)
 
 	if (ram_console_old_log == NULL)
 		return 0;
+#ifdef CONFIG_APANIC
+	if (has_apanic_dump)
+		return 0;
+#endif
+#ifdef CONFIG_APANIC_MMC
+	if (has_apanic_mmc_dump)
+		return 0;
+#endif
 #ifdef CONFIG_ANDROID_RAM_CONSOLE_EARLY_INIT
 	ram_console_old_log = kmalloc(ram_console_old_log_size, GFP_KERNEL);
 	if (ram_console_old_log == NULL) {

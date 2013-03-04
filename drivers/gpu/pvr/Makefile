@@ -108,7 +108,8 @@ pvrsrvkm-$(CONFIG_ION_OMAP) += ion.o
 
 omaplfb-y := \
 	omaplfb/omaplfb_displayclass.o \
-	omaplfb/omaplfb_linux.o
+	omaplfb/omaplfb_linux.o \
+	omaplfb/omaplfb-sysfs.o
 
 obj-$(CONFIG_PVR_SGX) += pvrsrvkm.o
 obj-$(CONFIG_PVR_SGX) += omaplfb.o

@@ -126,3 +126,7 @@ config SGX_DVFS_IDLE_TIMEOUT
 	int "DVFS idle timeout (us)"
 	depends on PVR_SGX
 	default 1000
+
+config OMAPLFB_CLONE_VRAM_TO_TILER
+	bool "Enable HDMI cloning from vram framebuffer to tiler buffer"
+	default n

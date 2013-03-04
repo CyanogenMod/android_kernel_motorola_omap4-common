@@ -863,7 +863,18 @@ PVRSRVMapDeviceMemoryBW(IMG_UINT32 ui32BridgeID,
 	{
 		PVR_DPF((PVR_DBG_MESSAGE, "using the mem wrap workaround."));
 
-		
+		/* Check the XPROC mapping count -if it is "0",
+		 * then the object is about to go away - do not allow mapping */
+		if(BM_XProcGetShareDataRefCount(psSrcKernelMemInfo->sShareMemWorkaround.ui32ShareIndex) < 1)
+		{
+			psMapDevMemOUT->eError = PVRSRV_ERROR_MAPPING_NOT_FOUND;
+			PVR_DPF((PVR_DBG_WARNING, "%s: Can't map buffer with slot %d, size %d "
+					"and refcount %d\n\t Invalid XPROC refcount of %d",
+				__FUNCTION__, psSrcKernelMemInfo->sShareMemWorkaround.ui32ShareIndex,
+				psSrcKernelMemInfo->uAllocSize, psSrcKernelMemInfo->ui32RefCount,
+				BM_XProcGetShareDataRefCount(psSrcKernelMemInfo->sShareMemWorkaround.ui32ShareIndex)));
+			return 0;
+		}
 
 
 
@@ -4028,6 +4039,7 @@ static PVRSRV_ERROR ModifyCompleteSyncOpsCallBack(IMG_PVOID		pvParam,
 
 OpFlushedComplete:
 		DoModifyCompleteSyncOps(psModSyncOpInfo);
+		PVRSRVKernelSyncInfoDecRef(psModSyncOpInfo->psKernelSyncInfo, IMG_NULL);
 	}
 
 	OSFreeMem(PVRSRV_OS_PAGEABLE_HEAP, 	sizeof(MODIFY_SYNC_OP_INFO), (IMG_VOID *)psModSyncOpInfo, 0);
@@ -4112,6 +4124,8 @@ PVRSRVDestroySyncInfoModObjBW(IMG_UINT32                                        
 		return 0;
 	}
 
+	PVRSRVKernelSyncInfoDecRef(psModSyncOpInfo->psKernelSyncInfo, IMG_NULL);
+
 	psDestroySyncInfoModObjOUT->eError = PVRSRVReleaseHandle(psPerProc->psHandleBase,
 																	 psDestroySyncInfoModObjIN->hKernelSyncInfoModObj,
 																	 PVRSRV_HANDLE_TYPE_SYNC_INFO_MOD_OBJ);
@@ -4172,6 +4186,15 @@ PVRSRVModifyPendingSyncOpsBW(IMG_UINT32									ui32BridgeID,
 		return 0;
 	}
 
+	
+	if (psKernelSyncInfo == IMG_NULL)
+	{
+		psModifySyncOpsOUT->eError = PVRSRV_ERROR_INVALID_PARAMS;
+		PVR_DPF((PVR_DBG_VERBOSE, "PVRSRVModifyPendingSyncOpsBW: SyncInfo bad handle"));
+		return 0;
+	}
+
+	PVRSRVKernelSyncInfoIncRef(psKernelSyncInfo, IMG_NULL);
 	
 	psModSyncOpInfo->psKernelSyncInfo = psKernelSyncInfo;
 	psModSyncOpInfo->ui32ModifyFlags = psModifySyncOpsIN->ui32ModifyFlags;
@@ -4244,6 +4267,7 @@ PVRSRVModifyCompleteSyncOpsBW(IMG_UINT32							ui32BridgeID,
 		return 0;
 	}
 
+	PVRSRVKernelSyncInfoDecRef(psModSyncOpInfo->psKernelSyncInfo, IMG_NULL);
 	psModSyncOpInfo->psKernelSyncInfo = IMG_NULL;
 
 	
@@ -4438,18 +4462,13 @@ FreeSyncInfoCallback(IMG_PVOID	pvParam,
                      IMG_BOOL	bDummy)
 {
 	PVRSRV_KERNEL_SYNC_INFO *psSyncInfo;
-	PVRSRV_ERROR eError;
 
 	PVR_UNREFERENCED_PARAMETER(ui32Param);
     PVR_UNREFERENCED_PARAMETER(bDummy);
 
 	psSyncInfo = (PVRSRV_KERNEL_SYNC_INFO *)pvParam;
 
-	eError = PVRSRVFreeSyncInfoKM(psSyncInfo);
-	if (eError != PVRSRV_OK)
-	{
-		return eError;
-	}
+	PVRSRVKernelSyncInfoDecRef(psSyncInfo, IMG_NULL);
 
 	return PVRSRV_OK;
 }
@@ -4512,7 +4531,7 @@ PVRSRVAllocSyncInfoBW(IMG_UINT32                                         ui32Bri
 
 	
  allocsyncinfo_errorexit_freesyncinfo:
-	PVRSRVFreeSyncInfoKM(psSyncInfo);
+	PVRSRVKernelSyncInfoDecRef(psSyncInfo, IMG_NULL);
 
  allocsyncinfo_errorexit:
 

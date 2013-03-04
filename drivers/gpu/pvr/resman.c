@@ -26,6 +26,7 @@
 
 #include "services_headers.h"
 #include "resman.h"
+#include "sgxinfokm.h"
 
 #ifdef __linux__
 #include <linux/version.h>
@@ -598,17 +599,13 @@ static PVRSRV_ERROR FreeResourceByPtr(RESMAN_ITEM	*psItem,
 			(IMG_UINTPTR_T)psItem->pfnFreeResource, psItem->ui32Flags));
 
 	
-	List_RESMAN_ITEM_Remove(psItem);
-
-
-	
 	RELEASE_SYNC_OBJ;
 
 	
 	if (bExecuteCallback)
 	{
 		eError = psItem->pfnFreeResource(psItem->pvParam, psItem->ui32Param, bForceCleanup);
-	 	if (eError != PVRSRV_OK)
+		if ((eError != PVRSRV_OK) && (eError != PVRSRV_ERROR_RETRY))
 		{
 			PVR_DPF((PVR_DBG_ERROR, "FreeResourceByPtr: ERROR calling FreeResource function"));
 		}
@@ -617,8 +614,14 @@ static PVRSRV_ERROR FreeResourceByPtr(RESMAN_ITEM	*psItem,
 	
 	ACQUIRE_SYNC_OBJ;
 
-	
-	OSFreeMem(PVRSRV_OS_PAGEABLE_HEAP, sizeof(RESMAN_ITEM), psItem, IMG_NULL);
+	if (eError != PVRSRV_ERROR_RETRY)
+	{
+		/* Remove this item from the resource list */
+		List_RESMAN_ITEM_Remove(psItem);
+
+		/* Free memory for the resource item */
+		OSFreeMem(PVRSRV_OS_PAGEABLE_HEAP, sizeof(RESMAN_ITEM), psItem, IMG_NULL);
+	}
 
 	return(eError);
 }
@@ -658,6 +661,34 @@ static IMG_VOID* FreeResourceByCriteria_AnyVaCb(RESMAN_ITEM *psCurItem, va_list 
 	}
 }
 
+static IMG_VOID ResManDumpDebugInfo(PRESMAN_ITEM psCurItem)
+{
+	PVRSRV_DEVICE_NODE *psDeviceNode = NULL;
+
+	if (psCurItem->ui32ResType == RESMAN_TYPE_HW_RENDER_CONTEXT ||
+		psCurItem->ui32ResType == RESMAN_TYPE_HW_TRANSFER_CONTEXT ||
+		psCurItem->ui32ResType == RESMAN_TYPE_HW_2D_CONTEXT)
+	{
+		if (psCurItem->pvParam)
+		{
+			psDeviceNode = *(PVRSRV_DEVICE_NODE **)(psCurItem->pvParam);
+		}
+	}
+	else if (psCurItem->ui32ResType == RESMAN_TYPE_SHARED_PB_DESC)
+	{
+		PVRSRV_STUB_PBDESC *psStubPBDescIn = psCurItem->pvParam;
+		if (psStubPBDescIn)
+		{
+			psDeviceNode = psStubPBDescIn->hDevCookie;
+		}
+	}
+
+	if (psDeviceNode && psDeviceNode->pvDevice)
+	{
+		SGXDumpDebugInfo(psDeviceNode->pvDevice, IMG_FALSE);
+	}
+}
+
 static PVRSRV_ERROR FreeResourceByCriteria(PRESMAN_CONTEXT	psResManContext,
 										   IMG_UINT32		ui32SearchCriteria,
 										   IMG_UINT32		ui32ResType,
@@ -667,6 +698,7 @@ static PVRSRV_ERROR FreeResourceByCriteria(PRESMAN_CONTEXT	psResManContext,
 {
 	PRESMAN_ITEM	psCurItem;
 	PVRSRV_ERROR	eError = PVRSRV_OK;
+	IMG_UINT32		ui32NumRetries = 0;
 
 	
 	
@@ -679,7 +711,28 @@ static PVRSRV_ERROR FreeResourceByCriteria(PRESMAN_CONTEXT	psResManContext,
 						 				ui32Param)) != IMG_NULL
 		  	&& eError == PVRSRV_OK)
 	{
-		eError = FreeResourceByPtr(psCurItem, bExecuteCallback, CLEANUP_WITH_POLL);
+		ui32NumRetries = 0;
+		do
+		{
+			eError = FreeResourceByPtr(psCurItem, bExecuteCallback, CLEANUP_WITH_POLL);
+			if (eError == PVRSRV_ERROR_RETRY)
+			{
+				if (ui32NumRetries++ == 250)
+				{
+					ResManDumpDebugInfo(psCurItem);
+					PVR_DPF((PVR_DBG_ERROR, "FreeResourceByCriteria: uKernel clean up of res type %d timed out",
+						psCurItem->ui32ResType));
+					PVR_DBG_BREAK;
+				}
+
+				RELEASE_SYNC_OBJ;
+				OSReleaseBridgeLock();
+				/* Give a chance for other threads to come in */
+				OSSleepms(20);
+				OSReacquireBridgeLock();
+				ACQUIRE_SYNC_OBJ;
+			}
+		} while (eError == PVRSRV_ERROR_RETRY);
 	}
 
 	return eError;

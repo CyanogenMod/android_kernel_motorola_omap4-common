@@ -26,6 +26,7 @@ struct omap2_hsmmc_info {
 	bool	vcc_aux_disable_is_sleep; /* Regulator off remapped to sleep */
 	int	gpio_cd;	/* or -EINVAL */
 	int	gpio_wp;	/* or -EINVAL */
+	int	init_delay;	/* delay in msec to start mmc host */
 	char	*name;		/* or NULL for default */
 	struct device *dev;	/* returned: pointer to mmc adapter */
 	int	ocr_mask;	/* temporary HACK */
@@ -47,3 +48,4 @@ static inline void omap2_hsmmc_init(struct omap2_hsmmc_info *info)
 }
 
 #endif
+extern int wifi_set_power(struct device *dev, int slot, int power_on, int vdd);

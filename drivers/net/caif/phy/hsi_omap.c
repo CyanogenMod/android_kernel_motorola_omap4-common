@@ -30,7 +30,7 @@ struct cfhsi_omap {
 	bool awake;
 };
 
-static int sw_reset_on_cfhsi_up;
+static int sw_reset_on_cfhsi_up = 0;
 module_param(sw_reset_on_cfhsi_up, bool, S_IRUGO);
 MODULE_PARM_DESC(sw_reset_on_cfhsi_up, "Perform software reset of HSI on interface up");
 
@@ -132,21 +132,19 @@ static int cfhsi_down (struct cfhsi_dev *dev)
 {
 	int res;
 	struct cfhsi_omap *cfhsi;
+	struct cfhsi_omap *cfhsi_list;
+	struct list_head *list_node;
+	struct list_head *n;
 
 	cfhsi = container_of(dev, struct cfhsi_omap, dev);
 
+	/* Make sure we don't get called back. */
+	hsi_set_read_cb(cfhsi->hsi_dev, NULL);
+	hsi_set_write_cb(cfhsi->hsi_dev, NULL);
+	hsi_set_port_event_cb(cfhsi->hsi_dev, NULL);
+
 	/* Set WAKE line low if not done already. */
 	if (cfhsi->awake) {
-		res = hsi_ioctl(cfhsi->hsi_dev, HSI_IOCTL_FLUSH_TX, NULL);
-		if (res) {
-			dev_err(&cfhsi->pdev.dev, "%s: TX flush failed: %d.\n",
-				__func__, res);
-		}
-		res = hsi_ioctl(cfhsi->hsi_dev, HSI_IOCTL_FLUSH_RX, NULL);
-		if (res) {
-			dev_err(&cfhsi->pdev.dev, "%s: RX flush failed: %d.\n",
-				__func__, res);
-		}
 		hsi_read_cancel(cfhsi->hsi_dev);
 		res = hsi_ioctl(cfhsi->hsi_dev, HSI_IOCTL_ACWAKE_DOWN, NULL);
 		if (res) {
@@ -156,6 +154,22 @@ static int cfhsi_down (struct cfhsi_dev *dev)
 	}
 	/* Reset the HSI block; set AC_DATA and AC_FLAG low */
 	WARN_ON(hsi_ioctl(cfhsi->hsi_dev, HSI_IOCTL_SW_RESET, NULL));
+
+	/* If device is still in list we will have to unregister it. */
+	list_for_each_safe(list_node, n, &cfhsi_dev_list) {
+		cfhsi_list = list_entry(list_node, struct cfhsi_omap, list);
+		/* Find the corresponding device. */
+		if (cfhsi_list == cfhsi) {
+			/* Remove from list. */
+			list_del(list_node);
+			/* unregister CAIF HSI device. */
+			platform_device_unregister(&cfhsi->pdev);
+			/* Free memory. */
+			kfree(cfhsi);
+			break;
+		}
+	}
+
 	return 0;
 }
 
@@ -221,12 +235,6 @@ static int cfhsi_wake_down(struct cfhsi_dev *dev)
 
 	cfhsi = container_of(dev, struct cfhsi_omap, dev);
 
-	res = hsi_ioctl(cfhsi->hsi_dev, HSI_IOCTL_FLUSH_TX, NULL);
-	if (res) {
-		dev_err(&cfhsi->pdev.dev, "%s: TX flush failed: %d.\n",
-			__func__, res);
-	}
-
 	res = hsi_ioctl(cfhsi->hsi_dev, HSI_IOCTL_ACWAKE_DOWN, NULL);
 	if (res)
 		dev_err(&cfhsi->pdev.dev, "%s: Wake down failed: %d.\n",
@@ -235,6 +243,30 @@ static int cfhsi_wake_down(struct cfhsi_dev *dev)
 		cfhsi->awake = false;
 
 	return res;
+}
+
+static int cfhsi_get_peer_wake (struct cfhsi_dev *dev, bool *status)
+{
+	int res;
+	struct cfhsi_omap *cfhsi;
+	u32 wake_status;
+
+	cfhsi = container_of(dev, struct cfhsi_omap, dev);
+
+	/* Get CA WAKE line status. */
+	res = hsi_ioctl(cfhsi->hsi_dev, HSI_IOCTL_GET_CAWAKE, &wake_status);
+	if(res < 0) {
+		dev_err(&cfhsi->pdev.dev, "%s: Get CA Wake failed: %d.\n",
+			__func__, res);
+		return res;
+	}
+
+	if (wake_status)
+		*status = true;
+	else
+		*status = false;
+
+	return 0;
 }
 
 static int cfhsi_fifo_occupancy(struct cfhsi_dev *dev, size_t *occupancy)
@@ -256,19 +288,13 @@ static int cfhsi_fifo_occupancy(struct cfhsi_dev *dev, size_t *occupancy)
 
 static int cfhsi_rx_cancel(struct cfhsi_dev *dev)
 {
-	int res;
 	struct cfhsi_omap *cfhsi = NULL;
 
 	cfhsi = container_of(dev, struct cfhsi_omap, dev);
 
-	res = hsi_ioctl(cfhsi->hsi_dev, HSI_IOCTL_FLUSH_RX, NULL);
-	if (res) {
-		dev_err(&cfhsi->pdev.dev, "%s: RX flush failed: %d.\n",
-			__func__, res);
-	}
-
-	/* Cancel outstanding read request. */
-	hsi_read_cancel(cfhsi->hsi_dev);
+	/* Cancel outstanding read request. Zero means transfer is done. */
+	if(!hsi_read_cancel(cfhsi->hsi_dev))
+		cfhsi->dev.drv->rx_done_cb(cfhsi->dev.drv);
 
 	return 0;
 }
@@ -371,6 +397,8 @@ static void hsi_proto_release(struct device *dev)
 		cfhsi = list_entry(list_node, struct cfhsi_omap, list);
 		/* Find the corresponding device. */
 		if (&cfhsi->pdev.dev == dev) {
+			/* This should not happen. */
+			printk(KERN_WARNING "%s: orphan.\n", __func__);
 			/* Remove from list. */
 			list_del(list_node);
 			/* Free memory. */
@@ -395,6 +423,7 @@ static int hsi_proto_probe(struct hsi_device *dev)
 	cfhsi->dev.cfhsi_down = cfhsi_down;
 	cfhsi->dev.cfhsi_wake_up = cfhsi_wake_up;
 	cfhsi->dev.cfhsi_wake_down = cfhsi_wake_down;
+	cfhsi->dev.cfhsi_get_peer_wake = cfhsi_get_peer_wake;
 	cfhsi->dev.cfhsi_fifo_occupancy = cfhsi_fifo_occupancy;
 	cfhsi->dev.cfhsi_rx_cancel = cfhsi_rx_cancel;
 
@@ -434,7 +463,7 @@ static int hsi_proto_remove(struct hsi_device *dev)
 			/* Remove from list. */
 			list_del(list_node);
 			/* Our HSI device is gone, unregister CAIF HSI device. */
-			platform_device_del(&cfhsi->pdev);
+			platform_device_unregister(&cfhsi->pdev);
 			/* Free memory. */
 			kfree(cfhsi);
 			return 0;
@@ -493,8 +522,8 @@ static void __exit cfhsi_omap_exit(void)
 		cfhsi = list_entry(list_node, struct cfhsi_omap, list);
 		/* Remove from list. */
 		list_del(list_node);
-		/* Our HSI device is gone, unregister CAIF HSI device. */
-		platform_device_del(&cfhsi->pdev);
+		/* unregister CAIF HSI device. */
+		platform_device_unregister(&cfhsi->pdev);
 		/* Free memory. */
 		kfree(cfhsi);
 	}

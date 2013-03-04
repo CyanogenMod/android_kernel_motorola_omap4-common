@@ -20,6 +20,7 @@ struct cfsrvl {
 	bool supports_flowctrl;
 	void (*release)(struct cflayer *layer);
 	struct dev_info dev_info;
+	int hdr_len;
 	void (*hold)(struct cflayer *lyr);
 	void (*put)(struct cflayer *lyr);
 	struct rcu_head rcu;

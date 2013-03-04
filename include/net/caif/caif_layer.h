@@ -15,17 +15,6 @@ struct cfpktq;
 struct caif_payload_info;
 struct caif_packet_funcs;
 
-#ifdef CONFIG_CAIF_USE_DEPRECATED_FUNC
-#define CAIF_MAX_FRAMESIZE 4096
-#define CAIF_MAX_PAYLOAD_SIZE (4096 - 64)
-#ifndef CAIF_USB_HEADROOM
-#define CAIF_NEEDED_HEADROOM (10)
-#else
-#define CAIF_NEEDED_HEADROOM (32)
-#endif /* CAIF_USB_HEADROOM */
-#define CAIF_NEEDED_TAILROOM (2)
-#endif /*CONFIG_CAIF_USE_DEPRECATED_FUNC*/
-
 #define CAIF_LAYER_NAME_SZ 16
 
 /**
@@ -169,15 +158,15 @@ struct cflayer {
 	 *  CAIF packets upwards in the stack.
 	 *	Packet handling rules:
 	 *	      - The CAIF packet (cfpkt) ownership is passed to the
-	 *		called receive function. This means that the the
-	 *		packet cannot be accessed after passing it to the
-	 *		above layer using up->receive().
+	 *		receive function. This means that the the packet
+	 *		cannot be accessed after passing it to the below
+	 *		layer using up->receive().
 	 *
 	 *	      - If parsing of the packet fails, the packet must be
 	 *		destroyed and negative error code returned
 	 *		from the function.
-	 *		EXCEPTION: If the framing layer (cffrml) returns
-	 *			-EILSEQ, the packet is not freed.
+	 *		EXEPTION: If framing layer (cffrml) returns
+	 *			-EILSEQ packet is not freed.
 	 *
 	 *	      - If parsing succeeds (and above layers return OK) then
 	 *		      the function must return a value >= 0.

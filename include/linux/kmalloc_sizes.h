@@ -1,3 +1,16 @@
+/* CONFIG_DEBUG_SLAB adds overhead to each object in a slab.
+ * The allocation sizes below take the overhead into account to
+ * ensure that each slab uses a single page.
+ */
+#ifdef CONFIG_DEBUG_SLAB_KMALLOC_SINGLE_PAGE
+#define dbg_slab(X) (((X/L1_CACHE_BYTES)*L1_CACHE_BYTES) \
+		    - L1_CACHE_BYTES - 2 * sizeof(unsigned long long))
+#define dbg_1024 dbg_slab(1024)
+#define dbg_1365 dbg_slab(1365)
+#define dbg_2048 dbg_slab(2048)
+#define dbg_4096 dbg_slab(4096)
+#endif
+
 #if (PAGE_SIZE == 4096)
 	CACHE(32)
 #endif
@@ -11,8 +24,15 @@
 #endif
 	CACHE(256)
 	CACHE(512)
+#ifdef CONFIG_DEBUG_SLAB_KMALLOC_SINGLE_PAGE
+	CACHE(dbg_1024)
+	CACHE(dbg_1365)
+	CACHE(dbg_2048)
+	CACHE(dbg_4096)
+#else
 	CACHE(1024)
 	CACHE(2048)
+#endif
 	CACHE(4096)
 	CACHE(8192)
 	CACHE(16384)
@@ -42,4 +62,12 @@
 #endif
 #if KMALLOC_MAX_SIZE >= 33554432
 	CACHE(33554432)
+#endif
+
+#ifdef CONFIG_DEBUG_SLAB_KMALLOC_SINGLE_PAGE
+#undef dbg_slab
+#undef dbg_1024
+#undef dbg_1365
+#undef dbg_2048
+#undef dbg_4096
 #endif

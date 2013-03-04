@@ -31,7 +31,7 @@ enum {
 	DEBUG_EXPIRE = 1U << 3,
 	DEBUG_WAKE_LOCK = 1U << 4,
 };
-static int debug_mask = DEBUG_EXIT_SUSPEND | DEBUG_WAKEUP;
+static int debug_mask = DEBUG_EXIT_SUSPEND | DEBUG_WAKEUP | DEBUG_SUSPEND;
 module_param_named(debug_mask, debug_mask, int, S_IRUGO | S_IWUSR | S_IWGRP);
 
 #define WAKE_LOCK_TYPE_MASK              (0x0f)
@@ -49,6 +49,7 @@ struct wake_lock main_wake_lock;
 suspend_state_t requested_suspend_state = PM_SUSPEND_MEM;
 static struct wake_lock unknown_wakeup;
 static struct wake_lock suspend_backoff_lock;
+static struct wake_lock suspend_sync_wake_lock;
 
 #define SUSPEND_BACKOFF_THRESHOLD	10
 #define SUSPEND_BACKOFF_INTERVAL	10000
@@ -268,6 +269,39 @@ static void suspend_backoff(void)
 			  msecs_to_jiffies(SUSPEND_BACKOFF_INTERVAL));
 }
 
+DECLARE_COMPLETION(suspend_sync_complete);
+
+static void do_suspend_sync(struct work_struct *work)
+{
+	sys_sync();
+	wake_unlock(&suspend_sync_wake_lock);
+	kfree(work);
+	complete(&suspend_sync_complete);
+}
+
+static void suspend_sync(void)
+{
+	struct work_struct *work;
+	/* Avoid to loop to sys_sync */
+	if (wake_lock_active(&suspend_sync_wake_lock))
+		return;
+
+	/*
+	* Ignored previous sys_sync()
+	* because maybe it was done long time ago
+	*/
+	INIT_COMPLETION(suspend_sync_complete);
+
+	work = kmalloc(sizeof(*work), GFP_ATOMIC);
+	if (work) {
+		INIT_WORK(work, do_suspend_sync);
+		wake_lock(&suspend_sync_wake_lock);
+		schedule_work(work);
+	} else {
+		pr_err("suspend: failed to do sync because ENOMEM");
+	}
+}
+
 static void suspend(struct work_struct *work)
 {
 	int ret;
@@ -281,7 +315,16 @@ static void suspend(struct work_struct *work)
 	}
 
 	entry_event_num = current_event_num;
-	sys_sync();
+	suspend_sync();
+
+	wait_for_completion_timeout(&suspend_sync_complete, HZ / 4);
+
+	if (wake_lock_active(&suspend_sync_wake_lock)) {
+		if (debug_mask & DEBUG_SUSPEND)
+			pr_info("suspend: abort suspend because syncing\n");
+		return;
+	}
+
 	if (debug_mask & DEBUG_SUSPEND)
 		pr_info("suspend: enter suspend\n");
 	getnstimeofday(&ts_entry);
@@ -576,6 +619,8 @@ static int __init wakelocks_init(void)
 	wake_lock_init(&unknown_wakeup, WAKE_LOCK_SUSPEND, "unknown_wakeups");
 	wake_lock_init(&suspend_backoff_lock, WAKE_LOCK_SUSPEND,
 		       "suspend_backoff");
+	wake_lock_init(&suspend_sync_wake_lock, WAKE_LOCK_SUSPEND,
+		       "suspend_sync");
 
 	ret = platform_device_register(&power_device);
 	if (ret) {
@@ -605,6 +650,7 @@ err_suspend_work_queue:
 err_platform_driver_register:
 	platform_device_unregister(&power_device);
 err_platform_device_register:
+	wake_lock_destroy(&suspend_sync_wake_lock);
 	wake_lock_destroy(&suspend_backoff_lock);
 	wake_lock_destroy(&unknown_wakeup);
 	wake_lock_destroy(&main_wake_lock);
@@ -622,6 +668,7 @@ static void  __exit wakelocks_exit(void)
 	destroy_workqueue(suspend_work_queue);
 	platform_driver_unregister(&power_driver);
 	platform_device_unregister(&power_device);
+	wake_lock_destroy(&suspend_sync_wake_lock);
 	wake_lock_destroy(&suspend_backoff_lock);
 	wake_lock_destroy(&unknown_wakeup);
 	wake_lock_destroy(&main_wake_lock);

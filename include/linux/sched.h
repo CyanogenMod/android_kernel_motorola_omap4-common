@@ -279,13 +279,22 @@ static inline void select_nohz_load_balancer(int stop_tick) { }
 #endif
 
 /*
- * Only dump TASK_* tasks. (0 for all tasks)
+ * Threads filter bitmask.
+ * Bit 0, for kthreads dump.
+ * Bit 1, for userspace threads dump.
  */
-extern void show_state_filter(unsigned long state_filter);
+#define SHOW_KTHREADS	(1 << 0)
+#define SHOW_APP_THREADS	(1 << 1)
+
+/*
+ * Only dump TASK_* and SHOW_* tasks. (0, 3) for all tasks.
+ */
+extern void show_state_filter(unsigned long state_filter,
+				unsigned long threads_filter);
 
 static inline void show_state(void)
 {
-	show_state_filter(0);
+	show_state_filter(0, 3);
 }
 
 extern void show_regs(struct pt_regs *);

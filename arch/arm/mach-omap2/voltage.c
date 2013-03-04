@@ -429,6 +429,28 @@ void omap_change_voltscale_method(struct voltagedomain *voltdm,
 	}
 }
 
+/**
+ * omap_voltage_reconfigure_switchers - API to reconfigure switchers.
+ *
+ */
+int omap_voltage_reconfigure_switchers(void)
+{
+	struct voltagedomain *voltdm;
+
+	list_for_each_entry(voltdm, &voltdm_list, node) {
+		if (!voltdm->pmic)
+			continue;
+		if (voltdm->pmic->reconfigure_switcher)
+			voltdm->pmic->reconfigure_switcher(voltdm,
+				voltdm->pmic->i2c_slave_addr);
+
+	}
+
+	return 0;
+}
+
+
+
 /* Voltage debugfs support */
 static int vp_volt_debug_get(void *data, u64 *val)
 {
@@ -592,6 +614,8 @@ int __init omap_voltage_late_init(void)
 
 		srcu_init_notifier_head(&voltdm->change_notify_list);
 	}
+
+	omap_voltage_reconfigure_switchers();
 #ifdef CONFIG_PM_FOOTPRINT
 	for (i = 0; i < vdd_info_time_stamp_size; i++) {
 		vdd_info_time_stamp[i].last_time = sched_clock();

@@ -775,6 +775,9 @@ static int omap4_pm_suspend(void)
 	else
 		pr_info("Successfully put all powerdomains to target state\n");
 
+	if (off_mode_enabled)
+		omap_voltage_reconfigure_switchers();
+
 	/*
 	 * Restore USB SAR registers only if off mode is enabled
 	 * and we fail to hit OFF mode. Otherwise USB SAR context

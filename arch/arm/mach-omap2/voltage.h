@@ -231,6 +231,8 @@ struct omap_voltdm_pmic {
 	u8 i2c_scll_low;
 	u8 i2c_scll_high;
 	u8 i2c_mcode;
+	u8  (*reconfigure_switcher)(struct voltagedomain *voltdm,
+					unsigned char i2c_addr);
 	unsigned long (*vsel_to_uv) (const u8 vsel);
 	u8 (*uv_to_vsel) (unsigned long uV);
 };
@@ -283,6 +285,8 @@ void omap_voltage_get_volttable(struct voltagedomain *voltdm,
 struct omap_volt_data *omap_voltage_get_voltdata(struct voltagedomain *voltdm,
 		unsigned long volt);
 struct omap_volt_data *omap_voltage_get_curr_vdata(struct voltagedomain *voldm);
+int omap_voltage_reconfigure_switchers(void);
+
 #ifdef CONFIG_PM
 int omap_voltage_register_pmic(struct voltagedomain *voltdm,
 			       struct omap_voltdm_pmic *pmic);
@@ -354,6 +358,13 @@ static inline unsigned long omap_get_dyn_nominal(struct omap_volt_data *vdata)
 			return vdata->volt_nominal;
 		return v;
 	}
+	return vdata->volt_nominal;
+}
+
+static inline unsigned long omap_get_nom_voltage(struct omap_volt_data *vdata)
+{
+	if (IS_ERR_OR_NULL(vdata))
+		return 0;
 	return vdata->volt_nominal;
 }
 

@@ -722,7 +722,8 @@ next:
 static int _dvfs_scale(struct device *req_dev, struct device *target_dev,
 		struct omap_vdd_dvfs_info *tdvfs_info)
 {
-	unsigned long curr_volt, new_volt;
+	unsigned long new_volt;
+	unsigned long curr_nom_volt, new_nom_volt;
 	int volt_scale_dir = DVFS_VOLT_SCALE_DOWN;
 	struct omap_vdd_dev_list *temp_dev;
 	struct plist_node *node;
@@ -750,22 +751,22 @@ static int _dvfs_scale(struct device *req_dev, struct device *target_dev,
 		return PTR_ERR(new_vdata);
 	}
 	new_volt = omap_get_operation_voltage(new_vdata);
+	new_nom_volt = omap_get_nom_voltage(new_vdata);
 	curr_vdata = omap_voltage_get_curr_vdata(voltdm);
 	if (IS_ERR_OR_NULL(curr_vdata)) {
 		pr_err("%s:%s: Bad Current voltage data\n",
 			__func__, voltdm->name);
 		return PTR_ERR(curr_vdata);
 	}
-	curr_volt = omap_vp_get_curr_volt(voltdm);
-	if (!curr_volt)
-		curr_volt = omap_get_operation_voltage(curr_vdata);
+
+	curr_nom_volt = omap_get_nom_voltage(curr_vdata);
 
 	/* Disable smartreflex module across voltage and frequency scaling */
 	omap_sr_disable(voltdm);
 
-	if (curr_volt == new_volt) {
+	if (curr_nom_volt == new_nom_volt) {
 		volt_scale_dir = DVFS_VOLT_SCALE_NONE;
-	} else if (curr_volt < new_volt) {
+	} else if (curr_nom_volt < new_nom_volt) {
 
 		ret = _dep_scale_domains(target_dev, vdd);
 		if (ret) {

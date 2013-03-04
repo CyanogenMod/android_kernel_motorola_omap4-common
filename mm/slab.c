@@ -115,6 +115,7 @@
 #include	<linux/debugobjects.h>
 #include	<linux/kmemcheck.h>
 #include	<linux/memory.h>
+#include	<linux/utsname.h>
 #include	<linux/prefetch.h>
 
 #include	<asm/cacheflush.h>
@@ -459,6 +460,14 @@ static void **dbg_userword(struct kmem_cache *cachep, void *objp)
 	BUG_ON(!(cachep->flags & SLAB_STORE_USER));
 	return (void **)(objp + cachep->buffer_size - BYTES_PER_WORD);
 }
+
+#ifdef CONFIG_MUDFLAP
+static unsigned long *dbg_realsize(struct kmem_cache *cachep, void *objp)
+{
+	BUG_ON(!(cachep->flags & SLAB_STORE_USER));
+	return (unsigned long *)(objp + cachep->buffer_size - REDZONE_ALIGN);
+}
+#endif
 
 #else
 
@@ -1925,6 +1934,7 @@ static void check_poison_obj(struct kmem_cache *cachep, void *objp)
 			       realobj, size);
 			print_objinfo(cachep, objp, 2);
 		}
+		BUG();
 	}
 }
 #endif
@@ -2290,8 +2300,8 @@ kmem_cache_create (const char *name, size_t size, size_t align,
 	if (ralign < align) {
 		ralign = align;
 	}
-	/* disable debug if necessary */
-	if (ralign > __alignof__(unsigned long long))
+	/* disable debug if not aligning with REDZONE_ALIGN */
+	if (ralign & (__alignof__(unsigned long long) - 1))
 		flags &= ~(SLAB_RED_ZONE | SLAB_STORE_USER);
 	/*
 	 * 4) Store it.
@@ -2317,8 +2327,8 @@ kmem_cache_create (const char *name, size_t size, size_t align,
 	 */
 	if (flags & SLAB_RED_ZONE) {
 		/* add space for red zone words */
-		cachep->obj_offset += sizeof(unsigned long long);
-		size += 2 * sizeof(unsigned long long);
+		cachep->obj_offset += align;
+		size += align + sizeof(unsigned long long);
 	}
 	if (flags & SLAB_STORE_USER) {
 		/* user store requires one word storage behind the end of
@@ -2922,6 +2932,7 @@ static inline void verify_redzone_free(struct kmem_cache *cache, void *obj)
 
 	printk(KERN_ERR "%p: redzone 1:0x%llx, redzone 2:0x%llx.\n",
 			obj, redzone1, redzone2);
+	BUG();
 }
 
 static void *cache_free_debugcheck(struct kmem_cache *cachep, void *objp,
@@ -3107,8 +3118,17 @@ static inline void cache_alloc_debugcheck_before(struct kmem_cache *cachep,
 }
 
 #if DEBUG
+#ifdef CONFIG_MUDFLAP
+#define cache_alloc_debugcheck_after(cachep, flags, objp, caller) \
+		cache_alloc_debugcheck_after(cahep, flags, objp, caller, 0)
+
+static void *cache_alloc_debugcheck_after_realsize(struct kmem_cache *cachep,
+				gfp_t flags, void *objp, void *caller,
+				unsigned long real_size)
+#else
 static void *cache_alloc_debugcheck_after(struct kmem_cache *cachep,
 				gfp_t flags, void *objp, void *caller)
+#endif
 {
 	if (!objp)
 		return objp;
@@ -3124,8 +3144,12 @@ static void *cache_alloc_debugcheck_after(struct kmem_cache *cachep,
 #endif
 		poison_obj(cachep, objp, POISON_INUSE);
 	}
-	if (cachep->flags & SLAB_STORE_USER)
+	if (cachep->flags & SLAB_STORE_USER) {
 		*dbg_userword(cachep, objp) = caller;
+	#ifdef CONFIG_MUDFLAP
+		*dbg_realsize(cachep, objp) = real_size;
+	#endif
+	}
 
 	if (cachep->flags & SLAB_RED_ZONE) {
 		if (*dbg_redzone1(cachep, objp) != RED_INACTIVE ||
@@ -3471,8 +3495,17 @@ __do_cache_alloc(struct kmem_cache *cachep, gfp_t flags)
 
 #endif /* CONFIG_NUMA */
 
+#ifdef CONFIG_MUDFLAP
+#define __cache_alloc(cachep, flags, caller) \
+		 __cache_alloc_realsize(cachep, flags, caller, 0)
+
+static __always_inline void *
+__cache_alloc_realsize(struct kmem_cache *cachep, gfp_t flags, void *caller,
+			unsigned long realsize)
+#else
 static __always_inline void *
 __cache_alloc(struct kmem_cache *cachep, gfp_t flags, void *caller)
+#endif
 {
 	unsigned long save_flags;
 	void *objp;
@@ -3488,7 +3521,12 @@ __cache_alloc(struct kmem_cache *cachep, gfp_t flags, void *caller)
 	local_irq_save(save_flags);
 	objp = __do_cache_alloc(cachep, flags);
 	local_irq_restore(save_flags);
+#ifdef CONFIG_MUDFLAP
+	objp = cache_alloc_debugcheck_after_realsize(cachep, flags, objp,
+							caller,	realsize);
+#else
 	objp = cache_alloc_debugcheck_after(cachep, flags, objp, caller);
+#endif
 	kmemleak_alloc_recursive(objp, obj_size(cachep), 1, cachep->flags,
 				 flags);
 	prefetchw(objp);
@@ -3655,6 +3693,21 @@ void *kmem_cache_alloc(struct kmem_cache *cachep, gfp_t flags)
 }
 EXPORT_SYMBOL(kmem_cache_alloc);
 
+#ifdef CONFIG_MUDFLAP
+void *kmem_cache_alloc_realsize(struct kmem_cache *cachep, gfp_t flags,
+				unsigned long realsize)
+{
+	void *ret = __cache_alloc_realsize(cachep, flags,
+						__builtin_return_address(0),
+						realsize);
+
+	trace_kmem_cache_alloc(_RET_IP_, ret,
+				obj_size(cachep), cachep->buffer_size, flags);
+
+	return ret;
+}
+#endif
+
 #ifdef CONFIG_TRACING
 void *
 kmem_cache_alloc_trace(size_t size, struct kmem_cache *cachep, gfp_t flags)
@@ -3668,6 +3721,19 @@ kmem_cache_alloc_trace(size_t size, struct kmem_cache *cachep, gfp_t flags)
 	return ret;
 }
 EXPORT_SYMBOL(kmem_cache_alloc_trace);
+
+#ifdef CONFIG_MUDFLAP
+void *kmem_cache_alloc_trace_realsize(size_t size,
+					struct kmem_cache *cachep, gfp_t flags,
+					unsigned long realsize)
+{
+	return __cache_alloc_realsize(cachep, flags,
+					__builtin_return_address(0),
+					realsize);
+}
+EXPORT_SYMBOL(kmem_cache_alloc_trace_realsize);
+#endif
+
 #endif
 
 #ifdef CONFIG_NUMA
@@ -4562,3 +4628,67 @@ size_t ksize(const void *objp)
 	return obj_size(virt_to_cache(objp));
 }
 EXPORT_SYMBOL(ksize);
+
+#ifdef CONFIG_MUDFLAP
+void slab_check_write(void *ptr, unsigned int sz, const char *location)
+{
+	struct page *page;
+	struct kmem_cache *cache;
+	struct slab *slab;
+	char *realobj;
+	void *obj;
+	unsigned long objnr, size, realsize;
+
+	page = virt_to_head_page(ptr);
+	if (!PageSlab(page))
+		return;
+
+	cache = page_get_cache(page);
+	slab = page_get_slab(page);
+	objnr = (unsigned)(ptr - slab->s_mem) / cache->buffer_size;
+	obj = index_to_obj(cache, slab, objnr);
+	realobj = obj + obj_offset(cache);
+	size = obj_size(cache);
+
+	/* realsize is saved when calling kmalloc() */
+	realsize = 0;
+	if (cache->flags & SLAB_STORE_USER)
+		realsize = *dbg_realsize(cache, obj);
+
+	if (!realsize)
+		realsize = size;
+
+	/*
+	 * 1) Whether prt is within the range of realobj
+	 * 2) Whether the mem is already freed
+	 */
+	if ((ptr >= (void *) realobj) &&
+		((ptr + sz) <= ((void *) realobj + realsize)) &&
+		(slab_bufctl(slab)[objnr] != BUFCTL_FREE))
+		return;
+
+	printk(KERN_ERR "<MUDFLAP>");
+	if (slab_bufctl(slab)[objnr] != BUFCTL_FREE)
+		printk(KERN_ERR "Buffer overflow detected!!!");
+	else
+		printk(KERN_ERR "Write to freed object!!!");
+
+	printk(KERN_ERR "ptr: %p, sz: %d, location: %s\n",
+			ptr, sz, location);
+	printk(KERN_ERR "obj: %p realobj: %p\n",
+					obj, realobj);
+	printk(KERN_ERR "kmalloc sz: %lu, buf sz: %u, obj sz %lu\n",
+				*dbg_realsize(cache, obj),
+				cache->buffer_size, size);
+
+	if (cache->flags & SLAB_STORE_USER) {
+		printk(KERN_ERR "Last user: [<%p>]",
+				*dbg_userword(cache, obj));
+		print_symbol("(%s)",
+				(unsigned long)*dbg_userword(cache, obj));
+		printk("\n");
+	}
+
+	dump_stack();
+}
+#endif

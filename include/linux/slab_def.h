@@ -135,11 +135,22 @@ struct cache_sizes {
 extern struct cache_sizes malloc_sizes[];
 
 void *kmem_cache_alloc(struct kmem_cache *, gfp_t);
+#ifdef CONFIG_MUDFLAP
+void *kmem_cache_alloc_realsize(struct kmem_cache *, gfp_t, unsigned long);
+#endif
 void *__kmalloc(size_t size, gfp_t flags);
 
 #ifdef CONFIG_TRACING
 extern void *kmem_cache_alloc_trace(size_t size,
 				    struct kmem_cache *cachep, gfp_t flags);
+
+#ifdef CONFIG_MUDFLAP
+extern void *kmem_cache_alloc_trace_realsize(size_t size,
+						struct kmem_cache *cachep,
+						gfp_t flags,
+						unsigned long realsize);
+#endif
+
 extern size_t slab_buffer_size(struct kmem_cache *cachep);
 #else
 static __always_inline void *
@@ -147,6 +158,16 @@ kmem_cache_alloc_trace(size_t size, struct kmem_cache *cachep, gfp_t flags)
 {
 	return kmem_cache_alloc(cachep, flags);
 }
+
+#ifdef CONFIG_MUDFLAP
+static __always_inline  void *kmem_cache_alloc_trace_realsize(size_t size,
+					struct kmem_cache *cachep,
+					gfp_t flags, unsigned long realsize)
+{
+	return kmem_cache_alloc_realsize(cachep, flags, realsize);
+}
+#endif
+
 static inline size_t slab_buffer_size(struct kmem_cache *cachep)
 {
 	return 0;
@@ -180,8 +201,12 @@ found:
 #endif
 			cachep = malloc_sizes[i].cs_cachep;
 
+#ifdef CONFIG_MUDFLAP
+		ret = kmem_cache_alloc_trace_realsize(size, cachep,
+							flags, size);
+#else
 		ret = kmem_cache_alloc_trace(size, cachep, flags);
-
+#endif
 		return ret;
 	}
 	return __kmalloc(size, flags);
@@ -239,5 +264,9 @@ found:
 }
 
 #endif	/* CONFIG_NUMA */
+
+#ifdef CONFIG_MUDFLAP
+void slab_check_write(void *ptr, unsigned int sz, const char *location);
+#endif
 
 #endif	/* _LINUX_SLAB_DEF_H */

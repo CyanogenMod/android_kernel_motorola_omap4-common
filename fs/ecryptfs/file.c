@@ -321,6 +321,42 @@ ecryptfs_compat_ioctl(struct file *file, unsigned int cmd, unsigned long arg)
 }
 #endif
 
+ssize_t ecryptfs_sync_read(struct file *filp, char __user *buf, \
+						size_t len, loff_t *ppos)
+{
+	ssize_t result;
+
+	struct file *lower_file = NULL;
+	if (unlikely(filp->f_flags & O_DIRECT)) {
+		lower_file = ecryptfs_file_to_lower(filp);
+		lower_file->f_flags |= O_DIRECT;
+		lower_file->f_pos = filp->f_pos;
+		result = vfs_read(lower_file, buf, len, ppos);
+		filp->f_pos = lower_file->f_pos;
+		return result;
+	} else {
+		return do_sync_read(filp, buf, len, ppos);
+	}
+}
+
+ssize_t ecryptfs_sync_write(struct file *filp, const char __user *buf, \
+						size_t len, loff_t *ppos)
+{
+	ssize_t result;
+
+	struct file *lower_file = NULL;
+	if (unlikely(filp->f_flags & O_DIRECT)) {
+		lower_file = ecryptfs_file_to_lower(filp);
+		lower_file->f_flags |= O_DIRECT;
+		lower_file->f_pos = filp->f_pos;
+		result = vfs_write(lower_file, buf, len, ppos);
+		filp->f_pos = lower_file->f_pos;
+		return result;
+	} else {
+		return do_sync_write(filp, buf, len, ppos);
+	}
+}
+
 const struct file_operations ecryptfs_dir_fops = {
 	.readdir = ecryptfs_readdir,
 	.read = generic_read_dir,
@@ -339,9 +375,9 @@ const struct file_operations ecryptfs_dir_fops = {
 
 const struct file_operations ecryptfs_main_fops = {
 	.llseek = generic_file_llseek,
-	.read = do_sync_read,
+	.read = ecryptfs_sync_read,
 	.aio_read = ecryptfs_read_update_atime,
-	.write = do_sync_write,
+	.write = ecryptfs_sync_write,
 	.aio_write = generic_file_aio_write,
 	.readdir = ecryptfs_readdir,
 	.unlocked_ioctl = ecryptfs_unlocked_ioctl,

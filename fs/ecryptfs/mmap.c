@@ -60,7 +60,9 @@ struct page *ecryptfs_get_locked_page(struct inode *inode, loff_t index)
  */
 static int ecryptfs_writepage(struct page *page, struct writeback_control *wbc)
 {
-	int rc;
+	struct inode *ecryptfs_inode;
+	struct ecryptfs_crypt_stat *crypt_stat;
+	int rc = 0;
 
 	/*
 	 * Refuse to write the page out if we are called from reclaim context
@@ -74,14 +76,27 @@ static int ecryptfs_writepage(struct page *page, struct writeback_control *wbc)
 		goto out;
 	}
 
-	rc = ecryptfs_encrypt_page(page);
-	if (rc) {
-		ecryptfs_printk(KERN_WARNING, "Error encrypting "
+	ecryptfs_inode = page->mapping->host;
+	crypt_stat =
+		&(ecryptfs_inode_to_private(ecryptfs_inode)->crypt_stat);
+
+	if (!crypt_stat
+	    || !(crypt_stat->flags & ECRYPTFS_ENCRYPTED)) {
+		ecryptfs_printk(KERN_DEBUG,
+				"Passing through unencrypted page\n");
+		rc = ecryptfs_write_lower_page_segment(ecryptfs_inode, page,
+			0, PAGE_CACHE_SIZE);
+	} else {
+		rc = ecryptfs_encrypt_page(page);
+		if (rc)
+			ecryptfs_printk(KERN_ERR, "Error encrypting "
 				"page (upper index [0x%.16lx])\n", page->index);
-		ClearPageUptodate(page);
-		goto out;
 	}
-	SetPageUptodate(page);
+
+	if (rc)
+		ClearPageUptodate(page);
+	else
+		SetPageUptodate(page);
 out:
 	unlock_page(page);
 	return rc;
@@ -557,10 +572,21 @@ static sector_t ecryptfs_bmap(struct address_space *mapping, sector_t block)
 	return rc;
 }
 
+/*
+ * It just is a stub function, which should NOT be called
+ */
+static ssize_t
+ecryptfs_direct_IO(int rw, struct kiocb *iocb, const struct iovec *iov,
+			loff_t offset, unsigned long nr_segs)
+{
+	return -EINVAL;
+}
+
 const struct address_space_operations ecryptfs_aops = {
 	.writepage = ecryptfs_writepage,
 	.readpage = ecryptfs_readpage,
 	.write_begin = ecryptfs_write_begin,
 	.write_end = ecryptfs_write_end,
 	.bmap = ecryptfs_bmap,
+	.direct_IO = ecryptfs_direct_IO,
 };

@@ -85,6 +85,9 @@
 
 #endif	/* CONFIG_ARCH_OMAP15XX */
 
+#ifdef CONFIG_MACH_MAPPHONE
+#define CONSISTENT_DMA_SIZE SZ_4M
+#else
 /* Override the ARM default */
 #ifdef CONFIG_FB_OMAP_CONSISTENT_DMA_SIZE
 
@@ -97,6 +100,7 @@
 	(((CONFIG_FB_OMAP_CONSISTENT_DMA_SIZE + 1) & ~1) * 1024 * 1024)
 
 #endif
+#endif /* CONFIG_MACH_MAPPHONE */
 
 #endif
 

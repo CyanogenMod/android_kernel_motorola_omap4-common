@@ -12,7 +12,7 @@
 
 #define EVDEV_MINOR_BASE	64
 #define EVDEV_MINORS		32
-#define EVDEV_MIN_BUFFER_SIZE	64U
+#define EVDEV_MIN_BUFFER_SIZE	128U
 #define EVDEV_BUF_PACKETS	8
 
 #include <linux/poll.h>
@@ -50,7 +50,7 @@ struct evdev_client {
 	struct evdev *evdev;
 	struct list_head node;
 	unsigned int bufsize;
-	struct input_event buffer[];
+	struct input_event *buffer;
 };
 
 static struct evdev *evdev_table[EVDEV_MINORS];
@@ -263,6 +263,8 @@ static int evdev_release(struct inode *inode, struct file *file)
 
 	evdev_detach_client(evdev, client);
 	wake_lock_destroy(&client->wake_lock);
+
+	kfree(client->buffer);
 	kfree(client);
 
 	evdev_close_device(evdev);
@@ -302,14 +304,18 @@ static int evdev_open(struct inode *inode, struct file *file)
 	if (!evdev)
 		return -ENODEV;
 
-	bufsize = evdev_compute_buffer_size(evdev->handle.dev);
-
-	client = kzalloc(sizeof(struct evdev_client) +
-				bufsize * sizeof(struct input_event),
-			 GFP_KERNEL);
+	client = kzalloc(sizeof(struct evdev_client), GFP_KERNEL);
 	if (!client) {
 		error = -ENOMEM;
 		goto err_put_evdev;
+	}
+
+	bufsize = evdev_compute_buffer_size(evdev->handle.dev);
+	client->buffer = kmalloc(bufsize * sizeof(struct input_event),
+				 GFP_KERNEL);
+	if (!client->buffer) {
+		error = -ENOMEM;
+		goto err_free_client;
 	}
 
 	client->bufsize = bufsize;
@@ -322,16 +328,18 @@ static int evdev_open(struct inode *inode, struct file *file)
 
 	error = evdev_open_device(evdev);
 	if (error)
-		goto err_free_client;
+		goto err_detach_client;
 
 	file->private_data = client;
 	nonseekable_open(inode, file);
 
 	return 0;
 
- err_free_client:
+ err_detach_client:
 	evdev_detach_client(evdev, client);
 	wake_lock_destroy(&client->wake_lock);
+	kfree(client->buffer);
+ err_free_client:
 	kfree(client);
  err_put_evdev:
 	put_device(&evdev->dev);

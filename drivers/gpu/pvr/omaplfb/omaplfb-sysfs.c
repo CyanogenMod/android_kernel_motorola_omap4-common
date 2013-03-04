@@ -109,22 +109,29 @@ void omaplfb_create_sysfs(struct omaplfb_device *odev)
 	int i, r;
 
 	/* Create a sysfs entry for every display */
-	for (i = 0; i < odev->display_count; i++) {
-		OMAPLFB_DEVINFO *display_info = &odev->display_info_list[i];
-		r = kobject_init_and_add(&display_info->kobj, &omaplfb_ktype,
-			&odev->dev->kobj, "display%d",
-			display_info->uDeviceID);
-		if (r)
-			ERROR_PRINTK("failed to create sysfs file\n");
+	for (i = 0; i < OMAPLFB_MAX_NUM_DEVICES; i++) {
+		OMAPLFB_DEVINFO *display_info = odev->display_info_list[i];
+		if (display_info) {
+			r = kobject_init_and_add(&display_info->kobj,
+						 &omaplfb_ktype,
+						 &odev->dev->kobj, "display%d",
+						 display_info->uiPVRDevID);
+			if (r)
+				printk(KERN_ERR DRIVER_PREFIX
+				       "failed to create sysfs file\n");
+		}
 	}
 }
 
 void omaplfb_remove_sysfs(struct omaplfb_device *odev)
 {
 	int i;
-	for (i = 0; i < odev->display_count; i++) {
-		OMAPLFB_DEVINFO *display_info = &odev->display_info_list[i];
-		kobject_del(&display_info->kobj);
-		kobject_put(&display_info->kobj);
+	for (i = 0; i < OMAPLFB_MAX_NUM_DEVICES; i++) {
+		OMAPLFB_DEVINFO *display_info = odev->display_info_list[i];
+		if (display_info) {
+			kobject_del(&display_info->kobj);
+			kobject_put(&display_info->kobj);
+		}
 	}
+
 }

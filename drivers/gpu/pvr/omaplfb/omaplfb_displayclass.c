@@ -56,10 +56,37 @@ extern struct ion_client *gpsIONClient;
 
 #define	OMAPLFB_VSYNC_SETTLE_COUNT	5
 
-#define	OMAPLFB_MAX_NUM_DEVICES		FB_MAX
-#if (OMAPLFB_MAX_NUM_DEVICES > FB_MAX)
-#error "OMAPLFB_MAX_NUM_DEVICES must not be greater than FB_MAX"
-#endif
+#if defined(CONFIG_OMAPLFB_CLONE_VRAM_TO_TILER)
+#include <plat/dma.h>
+
+#define DMA_TX_TIMEOUT   (1000)
+static int  OMAPLFBMotDmaInit(void);
+static void OMAPLFBMotDmaTerm(void);
+static int  OMAPLFBMotDmaConfig(int w, int h, int bytespp,
+					int src_stride, int dst_stride);
+static int  OMAPLFBMotDmaPerform(unsigned long src, unsigned long dst);
+static void OMAPLFBMotDmaCallback(int lch, u16 ch_status, void *pdata);
+static OMAPLFB_BOOL OMAPLFBMotAllocTiler2d(void);
+static OMAPLFB_BOOL OMAPLFBMotDeallocTiler2d(void);
+static IMG_UINT32 fb_to_phys(const OMAPLFB_DEVINFO *psDevInfo,
+					IMG_UINT32 addr);
+static IMG_SYS_PHYADDR sTilerMemAddr[2];
+struct omap_ion_tiler_alloc_data sTilerAllocData;
+static IMG_SYS_PHYADDR *sPageList;
+static unsigned int sDestStride;
+struct OMAPLFBMotDmaData {
+	u32               en;
+	u32               fn;
+	u32               src_fi;
+	u32               dst_fi;
+
+	int               id;
+	int               ch;
+	bool              complete;
+	wait_queue_head_t wait;
+};
+static struct OMAPLFBMotDmaData dmadata;
+#endif /* CONFIG_OMAPLFB_CLONE_VRAM_TO_TILER */
 
 static OMAPLFB_DEVINFO *gapsDevInfo[OMAPLFB_MAX_NUM_DEVICES];
 
@@ -132,6 +159,9 @@ static inline OMAPLFB_BOOL DontWaitForVSync(OMAPLFB_DEVINFO *psDevInfo)
 {
 	OMAPLFB_BOOL bDontWait;
 
+	if (psDevInfo->ignore_sync)
+		return OMAPLFB_TRUE;
+
 	bDontWait = OMAPLFBAtomicBoolRead(&psDevInfo->sBlanked) ||
 			OMAPLFBAtomicBoolRead(&psDevInfo->sFlushCommands);
 
@@ -166,7 +196,6 @@ static PVRSRV_ERROR OpenDCDevice(IMG_UINT32 uiPVRDevID,
                                  PVRSRV_SYNC_DATA* psSystemBufferSyncData)
 {
 	OMAPLFB_DEVINFO *psDevInfo;
-	OMAPLFB_ERROR eError;
 	unsigned uiMaxFBDevIDPlusOne = OMAPLFBMaxFBDevIDPlusOne();
 	unsigned i;
 
@@ -187,15 +216,6 @@ static PVRSRV_ERROR OpenDCDevice(IMG_UINT32 uiPVRDevID,
 
 	
 	psDevInfo->sSystemBuffer.psSyncData = psSystemBufferSyncData;
-	
-	eError = OMAPLFBUnblankDisplay(psDevInfo);
-	if (eError != OMAPLFB_OK)
-	{
-		DEBUG_PRINTK((KERN_WARNING DRIVER_PREFIX
-			": %s: Device %u: OMAPLFBUnblankDisplay failed (%d)\n", __FUNCTION__, psDevInfo->uiFBDevID, eError));
-		return PVRSRV_ERROR_UNBLANK_DISPLAY_FAILED;
-	}
-
 	
 	*phDevice = (IMG_HANDLE)psDevInfo;
 	
@@ -502,6 +522,10 @@ static PVRSRV_ERROR CreateDCSwapChain(IMG_HANDLE hDevice,
 			psBuffer[i].sSysAddr.uiAddr += ui32SwapBuffer *
 				ALIGN((IMG_UINT32)psDevInfo->sFBInfo.ulWidth * psDevInfo->sFBInfo.uiBytesPerPixel, PAGE_SIZE);
 		}
+
+		DEBUG_PRINTK((KERN_INFO DRIVER_PREFIX
+				": %s: VRAM buf num [%u] addr = %08x, offset = %u\n",
+				__FUNCTION__, i, psBuffer[i].sSysAddr.uiAddr, ui32BufferOffset));
 		psBuffer[i].psDevInfo = psDevInfo;
 		OMAPLFBInitBufferForSwap(&psBuffer[i]);
 		psBuffer[i].bvmap_handle = NULL;
@@ -895,17 +919,15 @@ void sgx_idle_log_flip(void);
 
 static void dsscomp_proxy_cmdcomplete(void * cookie, int i)
 {
-	COMMAND_COMPLETE_DATA *psCmdCompleteData =
-			(COMMAND_COMPLETE_DATA *)cookie;
+	COMMAND_COMPLETE_DATA *psCmdCompleteData = (COMMAND_COMPLETE_DATA *)cookie;
 
 	sgx_idle_log_flip();
 	/* XXX: assumes that there is only one display */
-	/* LK: Check if we are destroying sync objects.
-	   In this case we are now in "late" callback,
-	   so we can't allow callback to access sync objects
-	   memory. To do this just set zero to count of source
-	   and destination sync objects.
-	*/
+	/* LK: Check if we are destroying sync objects. In this case
+	 * we are now in "late" callback, so we can't allow callback
+	 * to access sync objects memory.To do this just set zero to
+	 * count of source and destination sync objects.
+	 */
 	if (NULL == gapsDevInfo[0]->psSwapChain) {
 		psCmdCompleteData->ui32SrcSyncCount = 0;
 		psCmdCompleteData->ui32DstSyncCount = 0;
@@ -920,6 +942,7 @@ static IMG_BOOL ProcessFlipV1(IMG_HANDLE hCmdCookie,
 							  unsigned long ulSwapInterval)
 {
 	OMAPLFBCreateSwapChainLock(psDevInfo);
+
 	
 	if (SwapChainHasChanged(psDevInfo, psSwapChain))
 	{
@@ -954,9 +977,16 @@ static IMG_BOOL ProcessFlipV1(IMG_HANDLE hCmdCookie,
 			};
 			struct tiler_pa_info *pas[1] = { NULL };
 			comp.ovls[0].ba = (u32) psBuffer->sSysAddr.uiAddr;
-			dsscomp_gralloc_queue(&comp, pas, true,
+			if (!psDevInfo->ignore_sync) {
+				dsscomp_gralloc_queue(&comp, pas, true,
 					      dsscomp_proxy_cmdcomplete,
 					      (void *) psBuffer->hCmdComplete);
+			} else {
+				dsscomp_gralloc_queue(&comp, pas, true,
+						      NULL, NULL);
+				dsscomp_proxy_cmdcomplete(
+					      psBuffer->hCmdComplete, IMG_TRUE);
+			}
 		} else {
 			OMAPLFBQueueBufferForSwap(psSwapChain, psBuffer);
 		}
@@ -1182,6 +1212,10 @@ static IMG_BOOL ProcessFlipV2(IMG_HANDLE hCmdCookie,
 	int rgz_items;
 	int calcsz;
 	struct dsscomp_setup_dispc_data *psDssData = &(psHwcData->dsscomp_data);
+#if defined(CONFIG_OMAPLFB_CLONE_VRAM_TO_TILER)
+	unsigned int requires_cloning = 0;
+	static unsigned int allocate_tiler, num_frames;
+#endif
 
 	if (uiHwcDataSz <= offsetof(struct omap_hwc_data, blit_data))
 		rgz_items = 0;
@@ -1251,6 +1285,13 @@ static IMG_BOOL ProcessFlipV2(IMG_HANDLE hCmdCookie,
 			continue;
 		}
 
+		if (phyAddr.uiAddr >= psDevInfo->psLINFBInfo->fix.smem_start &&
+		    phyAddr.uiAddr < (psDevInfo->psLINFBInfo->fix.smem_start + psDevInfo->psLINFBInfo->fix.smem_len))
+		{
+			asMemInfo[k].uiAddr = phyAddr.uiAddr;
+			continue;
+		}
+
 		/* normal gralloc layer */
 		psTilerInfo = kzalloc(sizeof(*psTilerInfo), GFP_KERNEL);
 		if(!psTilerInfo)
@@ -1282,6 +1323,9 @@ static IMG_BOOL ProcessFlipV2(IMG_HANDLE hCmdCookie,
 	for(i = 0; i < psDssData->num_ovls; i++)
 	{
 		unsigned int ix;
+#if defined(CONFIG_OMAPLFB_CLONE_VRAM_TO_TILER)
+		unsigned int fb_phys_addr;
+#endif
 		apsTilerPAs[i] = NULL;
 
 		/* only supporting Post2, cloned and fbmem layers */
@@ -1290,7 +1334,8 @@ static IMG_BOOL ProcessFlipV2(IMG_HANDLE hCmdCookie,
 		    psDssData->ovls[i].addressing != OMAP_DSS_BUFADDR_FB)
 			psDssData->ovls[i].cfg.enabled = false;
 
-		if (psDssData->ovls[i].addressing != OMAP_DSS_BUFADDR_LAYER_IX)
+		if (psDssData->ovls[i].addressing != OMAP_DSS_BUFADDR_LAYER_IX &&
+		    psDssData->ovls[i].addressing != OMAP_DSS_BUFADDR_OVL_IX)
 			continue;
 
 		/* Post2 layers */
@@ -1302,10 +1347,65 @@ static IMG_BOOL ProcessFlipV2(IMG_HANDLE hCmdCookie,
 			continue;
 		}
 
-		psDssData->ovls[i].addressing = OMAP_DSS_BUFADDR_DIRECT;
-		psDssData->ovls[i].ba = (u32) asMemInfo[ix].uiAddr;
-		psDssData->ovls[i].uv = (u32) asMemInfo[ix].uiUVAddr;
-		apsTilerPAs[i] = asMemInfo[ix].psTilerInfo;
+		if (psDssData->ovls[i].addressing == OMAP_DSS_BUFADDR_LAYER_IX) {
+			psDssData->ovls[i].addressing = OMAP_DSS_BUFADDR_DIRECT;
+			psDssData->ovls[i].ba = (u32) asMemInfo[ix].uiAddr;
+			psDssData->ovls[i].uv = (u32) asMemInfo[ix].uiUVAddr;
+			apsTilerPAs[i] = asMemInfo[ix].psTilerInfo;
+		}
+
+#if defined(CONFIG_OMAPLFB_CLONE_VRAM_TO_TILER)
+		if (psDssData->ovls[i].addressing == OMAP_DSS_BUFADDR_OVL_IX)
+			fb_phys_addr = fb_to_phys(psDevInfo, psDssData->ovls[ix].ba);
+		else
+			fb_phys_addr = fb_to_phys(psDevInfo, psDssData->ovls[i].ba);
+
+		if (fb_phys_addr && !is_tiler_addr(fb_phys_addr) &&
+			(psDssData->ovls[i].cfg.rotation & 1)) {
+			static unsigned int flip;
+			unsigned int dest_buf;
+			requires_cloning++;
+
+			if (!allocate_tiler) {
+				if (OMAPLFBMotAllocTiler2d() == false) {
+					printk(KERN_ERR DRIVER_PREFIX
+					"Tiler: %s: Device %u: TILER memory could not allocated; HDMI mirroring fails\n",
+					__FUNCTION__, psDevInfo->uiFBDevID);
+				}
+				allocate_tiler++;
+
+				printk(KERN_INFO DRIVER_PREFIX
+					": %s: Device %u (PVR Device ID %u): HDMI cloning enabled\n",
+					__FUNCTION__, psDevInfo->uiFBDevID, psDevInfo->uiPVRDevID);
+				/* config dma ch */
+				OMAPLFBMotDmaConfig(psDevInfo->sFBInfo.ulWidth, psDevInfo->sFBInfo.ulHeight,
+				(psDevInfo->psLINFBInfo->var.bits_per_pixel >> 3), psDevInfo->sFBInfo.ulByteStride, 32768);
+			}
+
+			dest_buf = sTilerMemAddr[flip].uiAddr;
+
+			DEBUG_PRINTK((KERN_INFO DRIVER_PREFIX
+					": Tiler: fb_phys_addr = %0x, dest_buf = %0x\n",
+					fb_phys_addr, dest_buf));
+
+			if (!fb_phys_addr || !dest_buf) {
+				printk(KERN_ERR DRIVER_PREFIX
+					"Tiler: %s: Device %u (PVR Device ID %u): Invalid vram or tiler memory\n",
+					__FUNCTION__, psDevInfo->uiFBDevID, psDevInfo->uiPVRDevID);
+			} else if (OMAPLFBMotDmaPerform(fb_phys_addr, dest_buf)) {
+				printk(KERN_ERR DRIVER_PREFIX
+					"Tiler: %s: Device %u (PVR Device ID %u): DMA copy failure\n",
+					__FUNCTION__, psDevInfo->uiFBDevID, psDevInfo->uiPVRDevID);
+			} else {
+				tiler_pa_free(apsTilerPAs[i]);
+				apsTilerPAs[i] = NULL;
+				psDssData->ovls[i].addressing = OMAP_DSS_BUFADDR_DIRECT;
+				psDssData->ovls[i].ba = dest_buf;
+				psDssData->ovls[i].uv = 0;
+				flip ^= 1;
+			}
+		}
+#endif
 	}
 
 	/* DSS pipes are setup up to this point, we can begin blitting here */
@@ -1403,10 +1503,32 @@ unmap_srcs:
 			bv_entry->bv_unmap(&src2desc);
 	}
 
-	dsscomp_gralloc_queue(psDssData, apsTilerPAs, false,
+	if (!psDevInfo->ignore_sync)
+	{
+		dsscomp_gralloc_queue(psDssData, apsTilerPAs, false,
 						  dsscomp_proxy_cmdcomplete,
 						  (void *)hCmdCookie);
-
+	} else {
+		dsscomp_gralloc_queue(psDssData, apsTilerPAs, false,
+							  NULL, NULL);
+		dsscomp_proxy_cmdcomplete(hCmdCookie, IMG_TRUE);
+	}
+#if defined(CONFIG_OMAPLFB_CLONE_VRAM_TO_TILER)
+	if (requires_cloning) {
+		num_frames = 0;
+	/*
+	 * wait for 2 frames front/back
+	 * buffer rendering complete before
+	 * deallocate when HDMI plugged out
+	 */
+	} else if (allocate_tiler && ++num_frames >= 2) {
+		OMAPLFBMotDeallocTiler2d();
+		allocate_tiler = 0;
+		printk(KERN_INFO DRIVER_PREFIX
+			": %s: Device %u (PVR Device ID %u): HDMI cloning disabled\n",
+			__FUNCTION__, psDevInfo->uiFBDevID, psDevInfo->uiPVRDevID);
+	}
+#endif
 	for(i = 0; i < k; i++)
 	{
 		tiler_pa_free(apsTilerPAs[i]);
@@ -1553,10 +1675,10 @@ static OMAPLFB_ERROR OMAPLFBInitFBDev(OMAPLFB_DEVINFO *psDevInfo)
 
 	/* hijack LINFB */
 #if defined(CONFIG_ION_OMAP)
-	if(1)
+	if (cpu_is_omap446x())
 	{
 		/* for some reason we need at least 3 buffers in the swap chain */
-		int n = FBSize / RoundUpToMultiple(psLINFBInfo->fix.line_length * psLINFBInfo->var.yres, ulLCM);
+		int n = FBSize / RoundUpToMultiple(psLINFBInfo->fix.line_length * psLINFBInfo->var.yres_virtual, ulLCM);
 		int res;
 		int i, x, y, w;
 		ion_phys_addr_t phys;
@@ -1566,8 +1688,8 @@ static OMAPLFB_ERROR OMAPLFBInitFBDev(OMAPLFB_DEVINFO *psDevInfo)
 		struct omap_ion_tiler_alloc_data sAllocData = {
 			/* TILER will align width to 128-bytes */
 			/* however, SGX must have full page width */
-			.w = ALIGN(psLINFBInfo->var.xres, PAGE_SIZE / (psLINFBInfo->var.bits_per_pixel / 8)),
-			.h = psLINFBInfo->var.yres,
+			.w = ALIGN(psLINFBInfo->var.xres_virtual, PAGE_SIZE / (psLINFBInfo->var.bits_per_pixel / 8)),
+			.h = psLINFBInfo->var.yres_virtual,
 			.fmt = psLINFBInfo->var.bits_per_pixel == 16 ? TILER_PIXEL_FMT_16BIT : TILER_PIXEL_FMT_32BIT,
 			.flags = 0,
 		};
@@ -1600,13 +1722,13 @@ static OMAPLFB_ERROR OMAPLFBInitFBDev(OMAPLFB_DEVINFO *psDevInfo)
 		psPVRFBInfo->sSysAddr.uiAddr = phys;
 		psPVRFBInfo->sCPUVAddr = 0;
 
-		psPVRFBInfo->ulWidth = psLINFBInfo->var.xres;
-		psPVRFBInfo->ulHeight = psLINFBInfo->var.yres;
+		psPVRFBInfo->ulWidth = psLINFBInfo->var.xres_virtual;
+		psPVRFBInfo->ulHeight = psLINFBInfo->var.yres_virtual;
 		psPVRFBInfo->ulByteStride = PAGE_ALIGN(psPVRFBInfo->ulWidth * psPVRFBInfo->uiBytesPerPixel);
 		w = psPVRFBInfo->ulByteStride >> PAGE_SHIFT;
 
 		/* this is an "effective" FB size to get correct number of buffers */
-		psPVRFBInfo->ulFBSize = sAllocData.h * n * psPVRFBInfo->ulByteStride;
+		psPVRFBInfo->ulFBSize = n * RoundUpToMultiple(sAllocData.h * psPVRFBInfo->ulByteStride, ulLCM);
 		psPVRFBInfo->psPageList = kzalloc(w * n * psPVRFBInfo->ulHeight * sizeof(*psPVRFBInfo->psPageList), GFP_KERNEL);
 		if (!psPVRFBInfo->psPageList)
 		{
@@ -1634,12 +1756,15 @@ static OMAPLFB_ERROR OMAPLFBInitFBDev(OMAPLFB_DEVINFO *psDevInfo)
 		psPVRFBInfo->sSysAddr.uiAddr = psLINFBInfo->fix.smem_start;
 		psPVRFBInfo->sCPUVAddr = psLINFBInfo->screen_base;
 
-		psPVRFBInfo->ulWidth = psLINFBInfo->var.xres;
-		psPVRFBInfo->ulHeight = psLINFBInfo->var.yres;
+		psPVRFBInfo->ulWidth = psLINFBInfo->var.xres_virtual;
+		psPVRFBInfo->ulHeight = psLINFBInfo->var.yres_virtual;
 		psPVRFBInfo->ulByteStride =  psLINFBInfo->fix.line_length;
 		psPVRFBInfo->ulFBSize = FBSize;
 		psPVRFBInfo->bIs2D = OMAPLFB_FALSE;
 		psPVRFBInfo->psPageList = IMG_NULL;
+		DEBUG_PRINTK((KERN_INFO DRIVER_PREFIX
+				"Tiler: %s: VRAM address: FB addr[dev id:%u] = %0x\n",
+				__FUNCTION__, psDevInfo->uiFBDevID, psPVRFBInfo->sSysAddr.uiAddr));
 	}
 	psPVRFBInfo->ulBufferSize = psPVRFBInfo->ulHeight * psPVRFBInfo->ulByteStride;
 	
@@ -1694,6 +1819,16 @@ static OMAPLFB_ERROR OMAPLFBInitFBDev(OMAPLFB_DEVINFO *psDevInfo)
 	psDevInfo->sFBInfo.sSysAddr.uiAddr = psPVRFBInfo->sSysAddr.uiAddr;
 	psDevInfo->sFBInfo.sCPUVAddr = psPVRFBInfo->sCPUVAddr;
 
+#if defined(CONFIG_OMAPLFB_CLONE_VRAM_TO_TILER)
+	/* Init DMA channel */
+	if (psDevInfo->uiFBDevID == 0) {
+		if (OMAPLFBMotDmaInit() != 0) {
+			printk(KERN_ERR DRIVER_PREFIX ": %s: Device %u: DMA Init failed; HDMI mirroring fails\n",
+				__FUNCTION__, uiFBDevID);
+		}
+	}
+#endif /* defined(CONFIG_OMAPLFB_CLONE_VRAM_TO_TILER) */
+
 	eError = OMAPLFB_OK;
 	goto ErrorRelSem;
 
@@ -1726,6 +1861,13 @@ static void OMAPLFBDeInitFBDev(OMAPLFB_DEVINFO *psDevInfo)
 	{
 		(void) psLINFBInfo->fbops->fb_release(psLINFBInfo, 0);
 	}
+
+#if defined(CONFIG_OMAPLFB_CLONE_VRAM_TO_TILER)
+	if (psDevInfo->uiFBDevID == 0) {
+		OMAPLFBMotDmaTerm();
+		OMAPLFBMotDeallocTiler2d();
+	}
+#endif /* defined(CONFIG_OMAPLFB_CLONE_VRAM_TO_TILER) */
 
 	module_put(psLINFBOwner);
 
@@ -1874,7 +2016,8 @@ ErrorExit:
 	return NULL;
 }
 
-OMAPLFB_ERROR OMAPLFBInit(void)
+OMAPLFB_ERROR OMAPLFBInit(struct omaplfb_device *omaplfb_dev)
+
 {
 	unsigned uiMaxFBDevIDPlusOne = OMAPLFBMaxFBDevIDPlusOne();
 	unsigned i;
@@ -1903,12 +2046,20 @@ OMAPLFB_ERROR OMAPLFBInit(void)
 	for(i = uiMaxFBDevIDPlusOne; i-- != 0;)
 	{
 		OMAPLFB_DEVINFO *psDevInfo = OMAPLFBInitDev(i);
-
+		if (omaplfb_dev)
+		{
+			omaplfb_dev->display_info_list[i] = NULL;
+		}
 		if (psDevInfo != NULL)
 		{
 			
 			OMAPLFBSetDevInfoPtr(psDevInfo->uiFBDevID, psDevInfo);
 			uiDevicesFound++;
+			if (omaplfb_dev)
+			{
+				omaplfb_dev->display_info_list[i] =
+					psDevInfo;
+			}
 		}
 	}
 
@@ -1976,3 +2127,239 @@ OMAPLFB_ERROR OMAPLFBDeInit(void)
 	return (bError) ? OMAPLFB_ERROR_INIT_FAILURE : OMAPLFB_OK;
 }
 
+/* MOT code for Mirroring */
+#if defined(CONFIG_OMAPLFB_CLONE_VRAM_TO_TILER)
+int OMAPLFBMotDmaInit(void)
+{
+	int rc = 0;
+
+	dmadata.id = OMAP_DMA_NO_DEVICE;
+	dmadata.ch = -1;
+	rc = omap_request_dma(dmadata.id, "MIRROR DMA", OMAPLFBMotDmaCallback,
+				(void *) &dmadata, &dmadata.ch);
+	if (rc != 0) {
+		printk(KERN_ERR DRIVER_PREFIX "%s: OMAPLFBMotDmaInit: DMA Alloc Failed\n", __FUNCTION__);
+		rc = -1;
+		goto failed_dma;
+	}
+	init_waitqueue_head(&dmadata.wait);
+
+failed_dma:
+	return rc;
+}
+
+void OMAPLFBMotDmaTerm(void)
+{
+	omap_free_dma(dmadata.ch);
+}
+
+int OMAPLFBMotDmaConfig(int w, int h, int bytespp, int src_stride, int dst_stride)
+{
+	int rc = 0;
+	DEBUG_PRINTK((KERN_INFO DRIVER_PREFIX
+			"%s : Tiler: w = %i, h = %i, bytespp = %i, src stride = %i, dest stride = %i\n",
+			__FUNCTION__, w, h, bytespp, src_stride, dst_stride));
+
+	dmadata.en     = (w * bytespp) / 4; /* 32 bit ES */
+	dmadata.fn     = h;
+	dmadata.src_fi = src_stride - (dmadata.en * 4) + 1;
+	dmadata.dst_fi = dst_stride - (dmadata.en * 4) + 1;
+
+	return rc;
+}
+
+int OMAPLFBMotDmaPerform(unsigned long src, unsigned long dst)
+{
+	DEBUG_PRINTK((KERN_INFO DRIVER_PREFIX
+			" Tiler:  %s:  %08x/%08x/%d/%d/%d/%d\n",
+			__FUNCTION__, (uint32_t)src, (uint32_t)dst, dmadata.en, dmadata.fn, dmadata.src_fi, dmadata.dst_fi));
+
+	omap_set_dma_transfer_params(dmadata.ch, OMAP_DMA_DATA_TYPE_S32,
+			dmadata.en, dmadata.fn, OMAP_DMA_SYNC_ELEMENT,
+			dmadata.id, 0x0);
+	omap_set_dma_src_params(dmadata.ch, 0, OMAP_DMA_AMODE_DOUBLE_IDX,
+			src, 1, dmadata.src_fi);
+	omap_set_dma_src_data_pack(dmadata.ch, 1);
+	omap_set_dma_src_burst_mode(dmadata.ch, OMAP_DMA_DATA_BURST_16);
+	omap_set_dma_dest_params(dmadata.ch, 0, OMAP_DMA_AMODE_DOUBLE_IDX,
+			dst, 1, dmadata.dst_fi);
+	omap_set_dma_dest_data_pack(dmadata.ch, 1);
+	omap_set_dma_dest_burst_mode(dmadata.ch, OMAP_DMA_DATA_BURST_16);
+	omap_dma_set_prio_lch(dmadata.ch, 1, 1);
+	omap_dma_set_global_params(DMA_DEFAULT_ARB_RATE, 0xFF, 0);
+
+	dmadata.complete = false;
+	omap_start_dma(dmadata.ch);
+	wait_event_interruptible_timeout(dmadata.wait,
+					dmadata.complete, DMA_TX_TIMEOUT);
+
+	if (!dmadata.complete) {
+		printk(KERN_WARNING DRIVER_PREFIX "%s : OMAPLFBMotDmaPerform: DMA timeout\n", __FUNCTION__);
+		omap_stop_dma(dmadata.ch);
+		return -EIO;
+	}
+
+	return 0;
+}
+
+/* This functions wakes up the application once the DMA transfer to
+ * Tiler space is completed.
+ */
+void OMAPLFBMotDmaCallback(int lch, u16 ch_status, void *pdata)
+{
+	struct OMAPLFBMotDmaData *data;
+	DEBUG_PRINTK((KERN_INFO DRIVER_PREFIX "Tiler:  %s: dma ch status = %u\n", __FUNCTION__, ch_status));
+	data = (struct OMAPLFBMotDmaData *) pdata;
+
+	data->complete = true;
+	wake_up_interruptible(&data->wait);
+}
+
+/*
+ * This function dynamically allocates Tiler2d memory
+ * for the size corresponds to source FB0 height,
+ * format and stride for DMA copy.
+ */
+OMAPLFB_BOOL OMAPLFBMotAllocTiler2d(void)
+{
+	OMAPLFB_BOOL rc = false;
+
+#if defined(CONFIG_ION_OMAP)
+	int n = 2; /* number of buffers */
+	int res;
+	int w;
+	ion_phys_addr_t phys;
+	size_t size;
+	struct tiler_view_t view;
+	unsigned long ulWidth, ulHeight, ulByteStride, ulFBSize;
+	IMG_UINT32 uiBytesPerPixel;
+	OMAPLFB_DEVINFO *psDevInfo;
+	OMAPLFB_FBINFO *psPVRFBInfo;
+	struct omap_ion_tiler_alloc_data sAllocData;
+	unsigned int buffer_offset;
+
+	/* Get DeviceInfo corresponds to fb0 */
+	struct fb_info *psLINFBInfo = NULL;
+
+	sDestStride = 0;
+	sTilerMemAddr[0].uiAddr = 0;
+	sTilerMemAddr[1].uiAddr = 0;
+
+	psDevInfo = OMAPLFBGetDevInfoPtr(0);
+	if (psDevInfo == NULL) {
+		printk(KERN_ERR DRIVER_PREFIX
+			" %s: Tiler: Device: 0: not available", __FUNCTION__);
+		return rc;
+	}
+
+	psLINFBInfo = psDevInfo->psLINFBInfo;
+	if (psLINFBInfo == NULL) {
+		printk(KERN_ERR DRIVER_PREFIX
+			" %s: Tiler: FBINFO for fb0: not available", __FUNCTION__);
+		return rc;
+	}
+
+	psPVRFBInfo = &psDevInfo->sFBInfo;
+	if (psPVRFBInfo == NULL) {
+		printk(KERN_ERR DRIVER_PREFIX
+			" %s: Tiler: PVRFBINFO for fb0: not available", __FUNCTION__);
+		return rc;
+	}
+
+	/* TILER will align width to 1024 bytes */
+	/* however, SGX must have full page width */
+	sAllocData.w = ALIGN(psLINFBInfo->var.xres_virtual, PAGE_SIZE / (psLINFBInfo->var.bits_per_pixel / 8));
+	sAllocData.h = psLINFBInfo->var.yres_virtual;
+	sAllocData.fmt = psLINFBInfo->var.bits_per_pixel == 16 ? TILER_PIXEL_FMT_16BIT : TILER_PIXEL_FMT_32BIT;
+	sAllocData.flags = 0;
+
+	DEBUG_PRINTK((KERN_DEBUG DRIVER_PREFIX
+		" %s: Tiler: Request allocation of Tiler2d buffers\n", __FUNCTION__));
+
+	/* limit to MAX 2 buffers to save TILER container space */
+	sAllocData.w *= n;
+
+	uiBytesPerPixel = psLINFBInfo->var.bits_per_pixel >> 3;
+
+	res = omap_ion_nonsecure_tiler_alloc(gpsIONClient, &sAllocData);
+	if (res < 0) {
+		res = omap_ion_tiler_alloc(gpsIONClient, &sAllocData);
+	}
+	sTilerAllocData.handle = sAllocData.handle;
+
+	if (res < 0) {
+		printk(KERN_ERR DRIVER_PREFIX
+			":%s: Tiler: Could not allocate 2D meomry\n", __FUNCTION__);
+		sTilerMemAddr[0].uiAddr = 0;
+		sTilerMemAddr[1].uiAddr = 0;
+		sDestStride = 0;
+		return rc;
+	}
+
+	ion_phys(gpsIONClient, sAllocData.handle, &phys, &size);
+
+	sTilerMemAddr[0].uiAddr = phys;
+	buffer_offset = ALIGN(psLINFBInfo->var.xres_virtual * (psLINFBInfo->var.bits_per_pixel >> 3), PAGE_SIZE);
+	sTilerMemAddr[1].uiAddr = phys + buffer_offset;
+	ulWidth = psLINFBInfo->var.xres_virtual;
+	ulHeight = psLINFBInfo->var.yres_virtual;
+	ulByteStride = PAGE_ALIGN(psPVRFBInfo->ulWidth * psPVRFBInfo->uiBytesPerPixel);
+	w = psPVRFBInfo->ulByteStride >> PAGE_SHIFT;
+	sDestStride = 32768; /*FIXME: api needed */
+
+	DEBUG_PRINTK((KERN_INFO DRIVER_PREFIX
+		": %s: Tiler start address buf1 = %x, buf2 = %x, size = %u, stride = %u\n",
+		__FUNCTION__, sTilerMemAddr[0].uiAddr, sTilerMemAddr[1].uiAddr, size, sDestStride));
+
+
+	/* this is an "effective" buffer size to get correct number of buffers */
+	ulFBSize = sAllocData.h * n * psPVRFBInfo->ulByteStride;
+	sPageList = kzalloc(w * n * psPVRFBInfo->ulHeight * sizeof(*psPVRFBInfo->psPageList), GFP_KERNEL);
+	if (!sPageList) {
+		printk(KERN_WARNING DRIVER_PREFIX ": %s: Tiler: Could not allocate page list\n", __FUNCTION__);
+		ion_free(gpsIONClient, sAllocData.handle);
+		sTilerMemAddr[0].uiAddr = 0;
+		sTilerMemAddr[1].uiAddr = 0;
+		sDestStride = 0;
+		return rc;
+	}
+
+	tilview_create(&view, phys, psDevInfo->sFBInfo.ulWidth, psDevInfo->sFBInfo.ulHeight);
+	return true;
+#endif
+	printk(KERN_ERR DRIVER_PREFIX
+	" %s: Tiler: ION mem config not enabled\n", __FUNCTION__);
+	return rc;
+}
+
+OMAPLFB_BOOL OMAPLFBMotDeallocTiler2d(void)
+{
+	OMAPLFB_BOOL rc = false;
+	if (sPageList) {
+		DEBUG_PRINTK((KERN_INFO DRIVER_PREFIX ": %s: Tiler: freeing page list\n", __FUNCTION__));
+		ion_free(gpsIONClient, sTilerAllocData.handle);
+		kfree(sPageList);
+		sPageList = 0;
+		sTilerMemAddr[0].uiAddr = 0;
+		sTilerMemAddr[1].uiAddr = 0;
+		return true;
+	} else {
+		printk(KERN_WARNING DRIVER_PREFIX ": %s: Tiler: no page list available to free\n", __FUNCTION__);
+		return rc;
+	}
+}
+
+IMG_UINT32 fb_to_phys(const OMAPLFB_DEVINFO *psDevInfo, IMG_UINT32 addr)
+{
+	IMG_UINT32 paddr = 0;
+	IMG_UINT32 fb_vaddr_begin = (IMG_UINT32)psDevInfo->sFBInfo.sCPUVAddr;
+	IMG_UINT32 fb_vaddr_end = fb_vaddr_begin + psDevInfo->psLINFBInfo->fix.smem_len;
+	IMG_UINT32 fb_paddr_begin = (IMG_UINT32)psDevInfo->sFBInfo.sSysAddr.uiAddr;
+	IMG_UINT32 fb_paddr_end = fb_paddr_begin + psDevInfo->sFBInfo.ulFBSize;
+	if (fb_vaddr_begin <= addr && addr < fb_vaddr_end)
+		paddr = addr - fb_vaddr_begin + (IMG_UINT32)psDevInfo->sFBInfo.sSysAddr.uiAddr;
+	else if (fb_paddr_begin <= addr && addr < fb_paddr_end)
+		paddr = addr;
+	return paddr;
+}
+#endif /* CONFIG_OMAPLFB_CLONE_VRAM_TO_TILER */

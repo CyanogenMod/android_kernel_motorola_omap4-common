@@ -1015,6 +1015,59 @@ int PVR_DRM_MAKENAME(DISPLAY_CONTROLLER, _Ioctl)(struct drm_device unref__ *dev,
 }
 #endif
 
+#if !defined(SUPPORT_DRI_DRM)
+static int omaplfb_probe(struct platform_device *pdev)
+{
+	struct omaplfb_device *odev;
+
+	odev = kzalloc(sizeof(*odev), GFP_KERNEL);
+
+	if (!odev)
+		return -ENOMEM;
+
+	if(OMAPLFBInit(odev) != OMAPLFB_OK)
+	{
+		printk(KERN_ERR DRIVER_PREFIX ": %s: OMAPLFBInit failed\n", __FUNCTION__);
+		kfree(odev);
+		return -ENODEV;
+	}
+
+	odev->dev = &pdev->dev;
+	platform_set_drvdata(pdev, odev);
+	omaplfb_create_sysfs(odev);
+
+	return 0;
+}
+
+static int omaplfb_remove(struct platform_device *pdev)
+{
+	struct omaplfb_device *odev;
+
+	odev = platform_get_drvdata(pdev);
+
+	omaplfb_remove_sysfs(odev);
+
+	if(OMAPLFBDeInit() != OMAPLFB_OK)
+	{
+		printk(KERN_ERR DRIVER_PREFIX ": %s: OMAPLFBDeInit failed\n", __FUNCTION__);
+	}
+
+	kfree(odev);
+
+	return 0;
+}
+
+static struct platform_driver omaplfb_driver = {
+	.driver = {
+		.name = DRVNAME,
+		.owner  = THIS_MODULE,
+	},
+	.probe = omaplfb_probe,
+	.remove = omaplfb_remove,
+};
+#endif
+
+
 #if defined(SUPPORT_DRI_DRM)
 int PVR_DRM_MAKENAME(DISPLAY_CONTROLLER, _Init)(struct drm_device unref__ *dev)
 #else
@@ -1022,11 +1075,16 @@ static int __init OMAPLFB_Init(void)
 #endif
 {
 
-	if(OMAPLFBInit() != OMAPLFB_OK)
+#if defined(SUPPORT_DRI_DRM)
+	if(OMAPLFBInit(NULL) != OMAPLFB_OK)
 	{
 		printk(KERN_ERR DRIVER_PREFIX ": %s: OMAPLFBInit failed\n", __FUNCTION__);
 		return -ENODEV;
 	}
+#else
+	if (platform_driver_register(&omaplfb_driver))
+		return -ENODEV;
+#endif
 
 	return 0;
 
@@ -1038,10 +1096,15 @@ void PVR_DRM_MAKENAME(DISPLAY_CONTROLLER, _Cleanup)(struct drm_device unref__ *d
 static void __exit OMAPLFB_Cleanup(void)
 #endif
 {    
+
+#if defined(SUPPORT_DRI_DRM)
 	if(OMAPLFBDeInit() != OMAPLFB_OK)
 	{
 		printk(KERN_ERR DRIVER_PREFIX ": %s: OMAPLFBDeInit failed\n", __FUNCTION__);
 	}
+#else
+	platform_driver_unregister(&omaplfb_driver);
+#endif
 }
 
 #if !defined(SUPPORT_DRI_DRM)

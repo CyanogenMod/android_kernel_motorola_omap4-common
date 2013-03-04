@@ -202,9 +202,20 @@ typedef struct OMAPLFB_DEVINFO_TAG
 
 #if defined(SUPPORT_DRI_DRM)
 	OMAPLFB_ATOMIC_BOOL     sLeaveVT;
+#else
+	struct kobject		kobj;
+	OMAPLFB_BOOL		ignore_sync;
 #endif
 
 }  OMAPLFB_DEVINFO;
+
+/* OMAPLFB_MAX_NUM_DEVICES must not be greater than FB_MAX */
+#define	OMAPLFB_MAX_NUM_DEVICES FB_MAX
+
+struct omaplfb_device {
+	struct device *dev;
+	OMAPLFB_DEVINFO *display_info_list[OMAPLFB_MAX_NUM_DEVICES];
+};
 
 #define	OMAPLFB_PAGE_SIZE 4096
 
@@ -245,7 +256,7 @@ typedef enum _OMAPLFB_UPDATE_MODE_
 #define	UNREFERENCED_PARAMETER(param) (param) = (param)
 #endif
 
-OMAPLFB_ERROR OMAPLFBInit(void);
+OMAPLFB_ERROR OMAPLFBInit(struct omaplfb_device *omaplfb_dev);
 OMAPLFB_ERROR OMAPLFBDeInit(void);
 
 OMAPLFB_DEVINFO *OMAPLFBGetDevInfoPtr(unsigned uiFBDevID);
@@ -280,6 +291,8 @@ void OMAPLFBAtomicIntDeInit(OMAPLFB_ATOMIC_INT *psAtomic);
 void OMAPLFBAtomicIntSet(OMAPLFB_ATOMIC_INT *psAtomic, int iVal);
 int OMAPLFBAtomicIntRead(OMAPLFB_ATOMIC_INT *psAtomic);
 void OMAPLFBAtomicIntInc(OMAPLFB_ATOMIC_INT *psAtomic);
+void omaplfb_create_sysfs(struct omaplfb_device *odev);
+void omaplfb_remove_sysfs(struct omaplfb_device *odev);
 
 #if defined(DEBUG)
 void OMAPLFBPrintInfo(OMAPLFB_DEVINFO *psDevInfo);

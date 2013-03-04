@@ -2394,6 +2394,11 @@ config HDMI_TI_4XXX_IP
 	  HDMI Library Interface , for TI OMAP4/Netra IP.
 	  See http://www.hdmi.org/ for HDMI specification.
 
+config OMAP_HDMI_AUDIO_WA
+	bool "HDMI Audio Work-around for OMAP4430"
+	depends on HDMI_TI_4XXX_IP
+	default y
+
 source "drivers/video/omap/Kconfig"
 source "drivers/video/omap2/Kconfig"
 

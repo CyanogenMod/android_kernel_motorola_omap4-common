@@ -31,7 +31,11 @@
 /* OMAP4 is hooked such that only a cold reset will reset VP */
 static void omap4_vp_recover(u8 vp_id)
 {
-	omap4_pm_cold_reset("Voltage Processor Recovery");
+	/* On Motorola platform, BUG causes a cold reset. We'd like to
+	 * change vp_recover from omap4_pm_cold_reset() to BUG() so that
+	 * it gets reported to the checkin server with proper stack trace.
+	 */
+	BUG();
 }
 
 static const struct omap_vp_ops omap4_vp_ops = {

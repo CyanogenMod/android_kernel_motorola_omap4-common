@@ -55,7 +55,7 @@ module_param(nitro_percentage, int, 0);
 static unsigned int nitro_rate = 1200000;
 module_param(nitro_rate, int, 0);
 
-static unsigned int cooling_rate = 1008000;
+static unsigned int cooling_rate = 1000000;
 module_param(cooling_rate, int, 0);
 
 static bool enabled;
@@ -579,7 +579,7 @@ static int __init omap4_duty_module_init(void)
 	INIT_WORK(&work_cpu1_plugin, omap4_duty_enable_wq);
 	INIT_WORK(&work_cpu1_plugout, omap4_duty_disable_wq);
 	heating_budget = NITRO_P(nitro_percentage, nitro_interval);
-
+#if 0
 	if (num_online_cpus() > 1)
 		err = omap4_duty_cycle_set_enabled(true, false);
 	else
@@ -588,7 +588,7 @@ static int __init omap4_duty_module_init(void)
 		pr_err("%s: failed to initialize the duty cycle\n", __func__);
 		goto exit;
 	}
-
+#endif
 	err = register_hotcpu_notifier(&omap4_duty_cycle_cpu_notifier);
 	if (err) {
 		pr_err("%s: failed to register cpu hotplug callback\n",

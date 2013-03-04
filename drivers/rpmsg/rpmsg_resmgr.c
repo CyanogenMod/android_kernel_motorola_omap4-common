@@ -50,7 +50,7 @@
 static struct dentry *rprm_dbg;
 
 static char *regulator_name[] = {
-	"cam2pwr"
+	"vcam"
 };
 
 static char *clk_src_name[] = {
@@ -300,16 +300,28 @@ int rprm_regulator_request(struct rprm_elem *e, struct rprm_regulator *obj)
 
 	rd->orig_uv = regulator_get_voltage(rd->reg_p);
 
-	ret = regulator_set_voltage(rd->reg_p, obj->min_uv, obj->max_uv);
-	if (ret) {
-		pr_err("%s: error setting %s voltage\n", __func__, reg_name);
-		goto error_reg;
+	if ((rd->orig_uv < obj->min_uv) || (rd->orig_uv > obj->max_uv)) {
+		/* set the regulator voltage min to min_uv and max to max_uv */
+		ret = regulator_set_voltage(rd->reg_p, obj->min_uv,
+						obj->max_uv);
+		if (ret < 0 && ret != -EPERM) {
+			pr_err("%s: error setting %s voltage\n", __func__,
+						reg_name);
+			goto error_reg;
+		}
 	}
 
-	ret = regulator_enable(rd->reg_p);
-	if (ret) {
-		pr_err("%s: error enabling %s ldo\n", __func__, reg_name);
-		goto error_reg;
+	ret = regulator_is_enabled(rd->reg_p);
+	if (ret < 0)
+		goto error;
+
+	if (ret == 0) {
+		ret = regulator_enable(rd->reg_p);
+		if (ret < 0) {
+			pr_err("%s: error enabling %s regulator\n", __func__,
+						reg_name);
+			goto error_reg;
+		}
 	}
 
 	e->handle = rd;
@@ -326,18 +338,23 @@ error:
 
 static void rprm_regulator_release(struct rprm_regulator_depot *obj)
 {
-	int ret;
-
-	ret = regulator_disable(obj->reg_p);
-	if (ret) {
-		pr_err("%s: error disabling ldo\n", __func__);
-		return;
-	}
+	int ret = 0;
+	u32 cur_voltage = 0;
 
 	/* Restore orginal voltage */
-	ret = regulator_set_voltage(obj->reg_p, obj->orig_uv, obj->orig_uv);
-	if (ret) {
-		pr_err("%s: error restoring voltage\n", __func__);
+	cur_voltage = regulator_get_voltage(obj->reg_p);
+	if (cur_voltage != obj->orig_uv) {
+		ret = regulator_set_voltage(obj->reg_p,
+				obj->orig_uv, obj->orig_uv);
+		if (ret < 0 && ret != -EPERM) {
+			pr_err("%s: error restoring voltage\n", __func__);
+			return;
+		}
+	}
+
+	ret = regulator_disable(obj->reg_p);
+	if (ret < 0) {
+		pr_err("%s: error disabling regulator\n", __func__);
 		return;
 	}
 

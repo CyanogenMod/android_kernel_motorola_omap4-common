@@ -41,6 +41,8 @@
 #define OMAPFB_PLANE_XRES_MIN		8
 #define OMAPFB_PLANE_YRES_MIN		8
 
+bool pan_set_par_disp;
+
 static char *def_mode;
 static char *def_vram;
 static int def_vrfb;
@@ -923,6 +925,13 @@ int omapfb_setup_overlay(struct fb_info *fbi, struct omap_overlay *ovl,
 	info.pos_y = posy;
 	info.out_width = outw;
 	info.out_height = outh;
+	info.min_x_decim = 1;
+	info.min_y_decim = 1;
+	info.max_x_decim = 255;
+	info.max_y_decim = 255;
+
+	if (pan_set_par_disp)
+		info.enabled = true;
 
 	r = ovl->set_overlay_info(ovl, &info);
 	if (r) {
@@ -1074,9 +1083,13 @@ EXPORT_SYMBOL(omapfb_dss2fb_timings);
 static int omapfb_set_par(struct fb_info *fbi)
 {
 	struct omapfb_info *ofbi = FB2OFB(fbi);
+	struct omap_dss_device *display = fb2display(fbi);
 	int r;
 
 	DBG("set_par(%d)\n", FB2OFB(fbi)->id);
+
+	if (display->state == OMAP_DSS_DISPLAY_ACTIVE)
+		pan_set_par_disp = 1;
 
 	omapfb_get_mem_region(ofbi->region);
 
@@ -1091,6 +1104,9 @@ static int omapfb_set_par(struct fb_info *fbi)
  out:
 	omapfb_put_mem_region(ofbi->region);
 
+	if (pan_set_par_disp)
+		pan_set_par_disp = 0;
+
 	return r;
 }
 
@@ -1099,25 +1115,38 @@ static int omapfb_pan_display(struct fb_var_screeninfo *var,
 {
 	struct omapfb_info *ofbi = FB2OFB(fbi);
 	struct fb_var_screeninfo new_var;
-	int r;
+	int r = 0;
+	struct omap_dss_device *display = fb2display(fbi);
 
 	DBG("pan_display(%d)\n", FB2OFB(fbi)->id);
 
-	if (var->xoffset == fbi->var.xoffset &&
-	    var->yoffset == fbi->var.yoffset)
-		return 0;
+	if (display->state == OMAP_DSS_DISPLAY_ACTIVE)
+		pan_set_par_disp = 1;
 
-	new_var = fbi->var;
-	new_var.xoffset = var->xoffset;
-	new_var.yoffset = var->yoffset;
+	if (var->xoffset != fbi->var.xoffset ||
+			var->yoffset != fbi->var.yoffset) {
 
-	fbi->var = new_var;
+		new_var = fbi->var;
+		new_var.xoffset = var->xoffset;
+		new_var.yoffset = var->yoffset;
 
-	omapfb_get_mem_region(ofbi->region);
+		fbi->var = new_var;
 
-	r = omapfb_apply_changes(fbi, 0);
+		omapfb_get_mem_region(ofbi->region);
 
-	omapfb_put_mem_region(ofbi->region);
+		r = omapfb_apply_changes(fbi, 0);
+
+		omapfb_put_mem_region(ofbi->region);
+
+	} else {
+		if (display->caps & OMAP_DSS_DISPLAY_CAP_MANUAL_UPDATE &&
+		display->driver->get_update_mode(display) != OMAP_DSS_UPDATE_AUTO)
+			display->driver->update(display, 0, 0,
+						var->xres, var->yres);
+	}
+
+	if (pan_set_par_disp)
+		pan_set_par_disp = 0;
 
 	return r;
 }
@@ -1870,6 +1899,14 @@ static int omapfb_fb_init(struct omapfb2_device *fbdev, struct fb_info *fbi)
 			var->bits_per_pixel = 16;
 	}
 
+	if (fbdev->dev->platform_data && ofbi->id == 0) {
+		struct omapfb_platform_data *opd = fbdev->dev->platform_data;
+		if (opd->xres_virtual && opd->yres_virtual) {
+			var->xres_virtual = opd->xres_virtual;
+			var->yres_virtual = opd->yres_virtual;
+		}
+	}
+
 	r = check_fb_var(fbi, var);
 	if (r)
 		goto err;
@@ -2248,7 +2285,9 @@ static int omapfb_init_display(struct omapfb2_device *fbdev,
 	}
 
 	if (dssdev->caps & OMAP_DSS_DISPLAY_CAP_MANUAL_UPDATE) {
+#ifndef CONFIG_FB_OMAP_BOOTLOADER_INIT
 		u16 w, h;
+#endif
 		if (dssdrv->enable_te) {
 			r = dssdrv->enable_te(dssdev, 1);
 			if (r) {
@@ -2266,7 +2305,7 @@ static int omapfb_init_display(struct omapfb2_device *fbdev,
 				return r;
 			}
 		}
-
+#ifndef CONFIG_FB_OMAP_BOOTLOADER_INIT
 		dssdrv->get_resolution(dssdev, &w, &h);
 		r = dssdrv->update(dssdev, 0, 0, w, h);
 		if (r) {
@@ -2274,6 +2313,8 @@ static int omapfb_init_display(struct omapfb2_device *fbdev,
 					"Failed to update display\n");
 			return r;
 		}
+
+#endif
 	} else {
 		if (dssdrv->set_update_mode) {
 			r = dssdrv->set_update_mode(dssdev,

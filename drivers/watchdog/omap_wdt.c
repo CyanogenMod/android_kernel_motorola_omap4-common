@@ -46,6 +46,9 @@
 #include <linux/interrupt.h>
 #include <linux/workqueue.h>
 #include <linux/nmi.h>
+#include <linux/debugfs.h>
+#include <linux/string.h>
+#include <linux/device.h>
 #include <mach/hardware.h>
 #include <plat/prcm.h>
 
@@ -60,6 +63,10 @@ MODULE_PARM_DESC(timer_margin, "initial watchdog timeout (in seconds)");
 static int kernelpet = 1;
 module_param(kernelpet, int, 0);
 MODULE_PARM_DESC(kernelpet, "pet watchdog in kernel via irq");
+
+#ifdef CONFIG_OMAP_WATCHDOG_CONTROL
+static int is_wdt_enabled = WDT_DISABLE;
+#endif
 
 static unsigned int wdt_trgr_pattern = 0x1234;
 static spinlock_t wdt_lock;
@@ -332,11 +339,112 @@ static int omap_wdt_nb_func(struct notifier_block *nb, unsigned long val,
 	return NOTIFY_OK;
 }
 
+#ifdef CONFIG_OMAP_WATCHDOG_CONTROL
+static const char ctrl_off[] = "off";
+static const char ctrl_on[] = "on";
+
+static ssize_t show_enabled(struct device *dev,
+		struct device_attribute *attr, char *buf)
+{
+	if (!kernelpet)
+		return sprintf(buf, "The watchdog is disabled permanently.\n");
+
+	switch (is_wdt_enabled) {
+	case WDT_DISABLE:
+		return sprintf(buf, "off\n");
+	case WDT_ENABLE:
+		return sprintf(buf, "on\n");
+	default:
+		return sprintf(buf, "unknown\n");
+	}
+}
+
+static void enable_wdt(struct omap_wdt_dev *wdev)
+{
+	void __iomem *base = wdev->base;
+
+	is_wdt_enabled = WDT_ENABLE;
+	pm_runtime_get_sync(wdev->dev);
+
+	/* Enable delay interrupt */
+	if (kernelpet && wdev->irq)
+		__raw_writel(0x2, base + OMAP_WATCHDOG_WIRQENSET);
+
+	omap_wdt_enable(wdev);
+
+	pm_runtime_put_sync(wdev->dev);
+}
+
+static void disable_wdt(struct omap_wdt_dev *wdev)
+{
+	void __iomem *base = wdev->base;
+
+	is_wdt_enabled = WDT_DISABLE;
+	pm_runtime_get_sync(wdev->dev);
+	omap_wdt_disable(wdev);
+
+	/* Disable delay interrupt */
+	if (kernelpet && wdev->irq)
+		__raw_writel(0x2, base + OMAP_WATCHDOG_WIRQENCLR);
+	pm_runtime_put_sync(wdev->dev);
+}
+
+static ssize_t set_enabled(struct device *dev, struct device_attribute *attr,
+		const char *buf, size_t count)
+{
+	struct omap_wdt_dev *wdev = platform_get_drvdata(omap_wdt_dev);
+	char *cp;
+	int len = count;
+
+	if (!kernelpet) {
+		printk(KERN_WARNING "The watchdog is disabled permanently.\n");
+		return -EINVAL;
+	}
+
+	cp = memchr(buf, '\n', count);
+	if (cp)
+		len = cp - buf;
+	if (wdev->omap_wdt_users) {
+		if (len == sizeof ctrl_off - 1 &&
+				strncmp(buf, ctrl_off, len) == 0) {
+			if (is_wdt_enabled == WDT_DISABLE) {
+				printk(KERN_WARNING
+					"The watchdog is already disabled\n");
+				return -EINVAL;
+			}
+			disable_wdt(wdev);
+		} else if (len == sizeof ctrl_on - 1 &&
+				strncmp(buf, ctrl_on, len) == 0) {
+			if (is_wdt_enabled == WDT_ENABLE) {
+				printk(KERN_WARNING
+					"The watchdog is already enabled\n");
+				return -EINVAL;
+			}
+			enable_wdt(wdev);
+		} else {
+			printk(KERN_WARNING
+				"Invalid enable setting, use on or off\n");
+			return -EINVAL;
+		}
+	}
+
+	return count;
+}
+
+static DEVICE_ATTR(enabled, 0600, show_enabled, set_enabled);
+struct device_attribute *wdt_attributes[] = {
+	&dev_attr_enabled,
+};
+#endif
+
 static int __devinit omap_wdt_probe(struct platform_device *pdev)
 {
 	struct resource *res, *mem, *res_irq;
 	struct omap_wdt_dev *wdev;
 	int ret;
+#ifdef CONFIG_OMAP_WATCHDOG_CONTROL
+	int i;
+#endif
 
 	/* reserve static register mappings */
 	res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
@@ -417,6 +525,20 @@ static int __devinit omap_wdt_probe(struct platform_device *pdev)
 		return omap_wdt_setup(wdev);
 	}
 
+#ifdef CONFIG_OMAP_WATCHDOG_CONTROL
+	for (i = 0; i < ARRAY_SIZE(wdt_attributes); i++) {
+		ret = device_create_file(&pdev->dev, wdt_attributes[i]);
+		if (ret != 0) {
+			printk(KERN_ERR "Failed to create attr %d: %d\n",
+				i, ret);
+		}
+	}
+
+	if (!is_wdt_enabled) {
+		disable_wdt(wdev);
+		printk(KERN_WARNING "Disable omap watchdog\n");
+	}
+#endif
 	return 0;
 
 err_misc:
@@ -456,7 +578,9 @@ static int __devexit omap_wdt_remove(struct platform_device *pdev)
 {
 	struct omap_wdt_dev *wdev = platform_get_drvdata(pdev);
 	struct resource *res = platform_get_resource(pdev, IORESOURCE_MEM, 0);
-
+#ifdef CONFIG_OMAP_WATCHDOG_CONTROL
+	int i;
+#endif
 	if (!res)
 		return -ENOENT;
 
@@ -475,7 +599,10 @@ static int __devexit omap_wdt_remove(struct platform_device *pdev)
 
 	kfree(wdev);
 	omap_wdt_dev = NULL;
-
+#ifdef CONFIG_OMAP_WATCHDOG_CONTROL
+	for (i = 0; i < ARRAY_SIZE(wdt_attributes); i++)
+		device_remove_file(&pdev->dev, wdt_attributes[i]);
+#endif
 	return 0;
 }
 
@@ -492,6 +619,10 @@ static int omap_wdt_suspend(struct device *dev)
 	struct platform_device *pdev = to_platform_device(dev);
 	struct omap_wdt_dev *wdev = platform_get_drvdata(pdev);
 
+#ifdef CONFIG_OMAP_WATCHDOG_CONTROL
+	if (!is_wdt_enabled)
+		return 0;
+#endif
 	if (wdev->omap_wdt_users) {
 		pm_runtime_get_sync(wdev->dev);
 		omap_wdt_disable(wdev);
@@ -506,6 +637,10 @@ static int omap_wdt_resume(struct device *dev)
 	struct platform_device *pdev = to_platform_device(dev);
 	struct omap_wdt_dev *wdev = platform_get_drvdata(pdev);
 
+#ifdef CONFIG_OMAP_WATCHDOG_CONTROL
+	if (!is_wdt_enabled)
+		return 0;
+#endif
 	if (wdev->omap_wdt_users) {
 		pm_runtime_get_sync(wdev->dev);
 		omap_wdt_enable(wdev);
@@ -537,8 +672,66 @@ static struct platform_driver omap_wdt_driver = {
 	},
 };
 
+#ifdef CONFIG_OMAP_WATCHDOG_TEST
+static int fire_wdt_reset_set(void *data, u64 val)
+{
+	long ret_affinity;
+	cpumask_t local_cpu_mask = CPU_MASK_NONE;
+
+#ifdef CONFIG_OMAP_WATCHDOG_CONTROL
+	if (is_wdt_enabled)
+		printk(KERN_WARNING "The omap_wdt is enabled.\n");
+	else
+		printk(KERN_WARNING "The omap_wdt is disabled. Hanging...\n");
+#endif
+	if (smp_processor_id()) {
+		printk(KERN_WARNING "Migrate from CPU#%d to CPU#0\n",
+			smp_processor_id());
+		cpu_set(0, local_cpu_mask);
+		ret_affinity = sched_setaffinity(0, &local_cpu_mask);
+		if (ret_affinity != 0) {
+			printk(KERN_ERR "Fail to migrate to  CPU#0 -> 0x%lX\n",
+				ret_affinity);
+			printk(KERN_ERR "Please try again!\n");
+			return 0;
+		}
+	}
+
+	printk(KERN_WARNING "CPU#%d fires wdt reset.\n", smp_processor_id());
+	printk(KERN_WARNING "Please wait %d sec ...\n", timer_margin);
+	local_irq_disable();
+	while (1);
+
+	return 0;
+}
+DEFINE_SIMPLE_ATTRIBUTE(fire_wdt_reset_fops,
+		NULL, fire_wdt_reset_set, "%llu\n");
+#endif
+
+#ifdef CONFIG_SOFTLOCKUP_WATCHDOG_TEST
+static int fire_softlockup_reset_set(void *data, u64 val)
+{
+	printk(KERN_WARNING "Fire softlockup watchdog reset.\n");
+	printk(KERN_WARNING "Please wait ...\n");
+	preempt_disable();
+	while (1) { }
+
+	return 0;
+}
+DEFINE_SIMPLE_ATTRIBUTE(fire_softlockup_reset_fops,
+		NULL, fire_softlockup_reset_set, "%llu\n");
+#endif
+
 static int __init omap_wdt_init(void)
 {
+#ifdef CONFIG_OMAP_WATCHDOG_TEST
+	debugfs_create_file("fire_wdt_reset", 0200,
+		NULL, NULL, &fire_wdt_reset_fops);
+#endif
+#ifdef CONFIG_SOFTLOCKUP_WATCHDOG_TEST
+	debugfs_create_file("fire_softlockup_reset", 0200,
+		NULL, NULL, &fire_softlockup_reset_fops);
+#endif
 	spin_lock_init(&wdt_lock);
 	return platform_driver_register(&omap_wdt_driver);
 }

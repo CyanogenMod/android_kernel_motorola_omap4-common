@@ -55,4 +55,8 @@
 #define PTV			0	/* prescale */
 #define GET_WLDR_VAL(secs)	(0xffffffff - ((secs) * (32768/(1<<PTV))) + 1)
 
+#ifdef CONFIG_OMAP_WATCHDOG_CONTROL
+#define WDT_ENABLE 1
+#define WDT_DISABLE 0
+#endif
 #endif				/* _OMAP_WATCHDOG_H */

@@ -212,6 +212,33 @@ config OMAP_WATCHDOG
 	  Support for TI OMAP1610/OMAP1710/OMAP2420/OMAP3430/OMAP4430 watchdog.  Say 'Y'
 	  here to enable the OMAP1610/OMAP1710/OMAP2420/OMAP3430/OMAP4430 watchdog timer.
 
+config OMAP_WATCHDOG_TEST
+	bool "To test omap watchdog"
+	depends on OMAP_WATCHDOG && DEBUG_FS
+	default n
+	help
+	  Select if you want to test omap watchdog.
+	  The debugfs interface is added for test purpose.
+
+config SOFTLOCKUP_WATCHDOG_TEST
+	bool "To test softlockup watchdog"
+	depends on LOCKUP_DETECTOR && DEBUG_FS
+	default n
+	help
+	  Select if you want to test softlockup watchdog reset.
+	  The debugfs interface is added for test purpose.
+
+config OMAP_WATCHDOG_CONTROL
+	bool "Control watchdog disable or enable"
+	depends on OMAP_WATCHDOG && MOT_ENG_PHONE_RESET
+	default n
+	help
+	  Select if you want to enable or disable watchdog timer.
+	  By default, watchdog timer is disabled under eng debug build.
+	  The device attribute "enabled" is provided for this control purpose.
+	  Set "on" to enable omap watchdog.
+	  Set "off" to disable it.
+
 config PNX4008_WATCHDOG
 	tristate "PNX4008 and LPC32XX Watchdog"
 	depends on ARCH_PNX4008 || ARCH_LPC32XX

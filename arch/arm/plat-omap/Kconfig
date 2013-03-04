@@ -85,7 +85,7 @@ config OMAP_SMARTREFLEX
 
 config OMAP_SMARTREFLEX_CLASS3
 	bool "Class 3 mode of Smartreflex Implementation"
-	depends on OMAP_SMARTREFLEX && TWL4030_CORE
+	depends on OMAP_SMARTREFLEX
 	help
 	  Say Y to enable Class 3 implementation of Smartreflex
 

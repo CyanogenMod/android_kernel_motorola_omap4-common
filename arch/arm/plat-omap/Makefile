@@ -33,4 +33,4 @@ obj-y += $(i2c-omap-m) $(i2c-omap-y)
 obj-$(CONFIG_OMAP_MBOX_FWK) += mailbox.o
 
 obj-$(CONFIG_OMAP_PM_NOOP) += omap-pm-interface.o
-obj-$(CONFIG_OMAP_PM) += omap-pm-interface.o omap-pm-helper.o
+obj-$(CONFIG_OMAP_PM) += omap-pm-interface.o omap-pm-helper.o omap_cpuboost.o

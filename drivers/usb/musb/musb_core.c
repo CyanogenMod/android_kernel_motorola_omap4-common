@@ -115,6 +115,8 @@
 #define MUSB_DRIVER_NAME "musb-hdrc"
 const char musb_driver_name[] = MUSB_DRIVER_NAME;
 
+struct musb *g_musb;
+unsigned musb_debug;
 MODULE_DESCRIPTION(DRIVER_INFO);
 MODULE_AUTHOR(DRIVER_AUTHOR);
 MODULE_LICENSE("GPL");
@@ -510,10 +512,7 @@ static irqreturn_t musb_stage0_irq(struct musb *musb, u8 int_usb,
 		 *  - ... to A_WAIT_BCON.
 		 * a_wait_vrise_tmout triggers VBUS_ERROR transitions
 		 */
-		musb_writeb(mbase, MUSB_DEVCTL, MUSB_DEVCTL_SESSION);
 		musb->ep0_stage = MUSB_EP0_START;
-		musb->xceiv->state = OTG_STATE_A_IDLE;
-		MUSB_HST_MODE(musb);
 		musb_platform_set_vbus(musb, 1);
 
 		handled = IRQ_HANDLED;
@@ -731,6 +730,7 @@ b_host:
 #ifdef CONFIG_USB_MUSB_HDRC_HCD
 		case OTG_STATE_A_HOST:
 		case OTG_STATE_A_SUSPEND:
+		case OTG_STATE_A_WAIT_BCON:
 			usb_hcd_resume_root_hub(musb_to_hcd(musb));
 			musb_root_disconnect(musb);
 			if (musb->a_wait_bcon != 0 && is_otg_enabled(musb))
@@ -1020,9 +1020,8 @@ static void musb_shutdown(struct platform_device *pdev)
  * We don't currently use dynamic fifo setup capability to do anything
  * more than selecting one of a bunch of predefined configurations.
  */
-#if defined(CONFIG_USB_MUSB_TUSB6010) || defined(CONFIG_USB_MUSB_OMAP2PLUS) \
-	|| defined(CONFIG_USB_MUSB_AM35X)
-static ushort __initdata fifo_mode = 4;
+#if defined(CONFIG_USB_MUSB_TUSB6010) || defined(CONFIG_USB_MUSB_OMAP2PLUS)
+static ushort fifo_mode = 4;
 #elif defined(CONFIG_USB_MUSB_UX500)
 static ushort __initdata fifo_mode = 5;
 #else
@@ -1077,7 +1076,7 @@ static struct musb_fifo_cfg __initdata mode_3_cfg[] = {
 };
 
 /* mode 4 - fits in 16KB */
-static struct musb_fifo_cfg __initdata mode_4_cfg[] = {
+static struct musb_fifo_cfg  mode_4_cfg[] = {
 { .hw_ep_num =  1, .style = FIFO_TX,   .maxpacket = 512, },
 { .hw_ep_num =  1, .style = FIFO_RX,   .maxpacket = 512, },
 { .hw_ep_num =  2, .style = FIFO_TX,   .maxpacket = 512, },
@@ -1096,16 +1095,57 @@ static struct musb_fifo_cfg __initdata mode_4_cfg[] = {
 { .hw_ep_num =  8, .style = FIFO_RX,   .maxpacket = 512, },
 { .hw_ep_num =  9, .style = FIFO_TX,   .maxpacket = 512, },
 { .hw_ep_num =  9, .style = FIFO_RX,   .maxpacket = 512, },
-{ .hw_ep_num = 10, .style = FIFO_TX,   .maxpacket = 256, },
-{ .hw_ep_num = 10, .style = FIFO_RX,   .maxpacket = 64, },
-{ .hw_ep_num = 11, .style = FIFO_TX,   .maxpacket = 256, },
-{ .hw_ep_num = 11, .style = FIFO_RX,   .maxpacket = 64, },
-{ .hw_ep_num = 12, .style = FIFO_TX,   .maxpacket = 256, },
-{ .hw_ep_num = 12, .style = FIFO_RX,   .maxpacket = 64, },
-{ .hw_ep_num = 13, .style = FIFO_RXTX, .maxpacket = 4096, },
+{ .hw_ep_num = 10, .style = FIFO_TX,   .maxpacket = 512, },
+{ .hw_ep_num = 10, .style = FIFO_RX,   .maxpacket = 512, },
+{ .hw_ep_num = 11, .style = FIFO_TX,   .maxpacket = 512, },
+{ .hw_ep_num = 11, .style = FIFO_RX,   .maxpacket = 512, },
+{ .hw_ep_num = 12, .style = FIFO_TX,   .maxpacket = 512, },
+{ .hw_ep_num = 12, .style = FIFO_RX,   .maxpacket = 512, },
+{ .hw_ep_num = 13, .style = FIFO_RXTX, .maxpacket = 1024, },
 { .hw_ep_num = 14, .style = FIFO_RXTX, .maxpacket = 1024, },
 { .hw_ep_num = 15, .style = FIFO_RXTX, .maxpacket = 1024, },
 };
+
+/* mode 4 for host - fits in 16KB */
+/* Reasons to config ep3 and ep4 fifo size to 64:
+ * 1) Compare with endpoint number, MUSB DMA channel is not sufficient.
+ * 2) Because of kernel memory limitation and allocation algorithm,
+ *    When kernel allocates Bulk urb transfer buffer, it doesn't map them
+ *    to virtual address.
+ * So Bulk usb transfers must use DMA.
+ *
+ * To ensure bulk transfer always use DMA:
+ * 1) Config ep3 and ep4 fifo size to 64, So Interrupt transfer is always
+ *    scheduled to 64 fifo size endpoints. And bulk transfer is always scheduled
+ *    to 512 fifo size endpoints.
+ * 2) in musb_ep_program() don't allocate dma channle for interrrupt transfer.
+ *
+ * Outcome:
+ * Bulk transfer can be always scheduled on 512 fifo size endpoints and these
+ * endpoints has DMA channel. So bulk transfer always use DMA.
+ * Interrupt transfer can be always scheduled on 64 fifo size endpoints
+ * and these endpoints don't have DMA channel.
+ * So interrupt transfer always use PIO.
+ */
+static struct musb_fifo_cfg mode_4h_cfg[] = {
+{ .hw_ep_num =  1, .style = FIFO_TX,   .maxpacket = 512, },
+{ .hw_ep_num =  1, .style = FIFO_RX,   .maxpacket = 512, },
+{ .hw_ep_num =  2, .style = FIFO_TX,   .maxpacket = 512, },
+{ .hw_ep_num =  2, .style = FIFO_RX,   .maxpacket = 512, },
+{ .hw_ep_num =  3, .style = FIFO_TX,   .maxpacket = 64, },
+{ .hw_ep_num =  3, .style = FIFO_RX,   .maxpacket = 64, },
+{ .hw_ep_num =  4, .style = FIFO_TX,   .maxpacket = 64, },
+{ .hw_ep_num =  4, .style = FIFO_RX,   .maxpacket = 64, },
+{ .hw_ep_num =  5, .style = FIFO_TX,   .maxpacket = 512, },
+{ .hw_ep_num =  5, .style = FIFO_RX,   .maxpacket = 512, },
+{ .hw_ep_num =  6, .style = FIFO_TX,   .maxpacket = 512, },
+{ .hw_ep_num =  6, .style = FIFO_RX,   .maxpacket = 512, },
+{ .hw_ep_num =  7, .style = FIFO_RXTX, .maxpacket = 512, },
+{ .hw_ep_num =  8, .style = FIFO_RXTX, .maxpacket = 512, },
+{ .hw_ep_num =  9, .style = FIFO_RXTX, .maxpacket = 4096, },
+{ .hw_ep_num = 10, .style = FIFO_RXTX, .maxpacket = 4096, },
+};
+
 
 /* mode 5 - fits in 8KB */
 static struct musb_fifo_cfg __initdata mode_5_cfg[] = {
@@ -1144,7 +1184,7 @@ static struct musb_fifo_cfg __initdata mode_5_cfg[] = {
  *
  * returns negative errno or offset for next fifo.
  */
-static int __init
+static int
 fifo_setup(struct musb *musb, struct musb_hw_ep  *hw_ep,
 		const struct musb_fifo_cfg *cfg, u16 offset)
 {
@@ -1187,12 +1227,14 @@ fifo_setup(struct musb *musb, struct musb_hw_ep  *hw_ep,
 		musb_write_txfifoadd(mbase, c_off);
 		hw_ep->tx_double_buffered = !!(c_size & MUSB_FIFOSZ_DPB);
 		hw_ep->max_packet_sz_tx = maxpacket;
+		hw_ep->is_shared_fifo = false;
 		break;
 	case FIFO_RX:
 		musb_write_rxfifosz(mbase, c_size);
 		musb_write_rxfifoadd(mbase, c_off);
 		hw_ep->rx_double_buffered = !!(c_size & MUSB_FIFOSZ_DPB);
 		hw_ep->max_packet_sz_rx = maxpacket;
+		hw_ep->is_shared_fifo = false;
 		break;
 	case FIFO_RXTX:
 		musb_write_txfifosz(mbase, c_size);
@@ -1217,11 +1259,11 @@ fifo_setup(struct musb *musb, struct musb_hw_ep  *hw_ep,
 	return offset + (maxpacket << ((c_size & MUSB_FIFOSZ_DPB) ? 1 : 0));
 }
 
-static struct musb_fifo_cfg __initdata ep0_cfg = {
+static struct musb_fifo_cfg ep0_cfg = {
 	.style = FIFO_RXTX, .maxpacket = 64,
 };
 
-static int __init ep_config_from_table(struct musb *musb)
+int ep_config_from_table(struct musb *musb)
 {
 	const struct musb_fifo_cfg	*cfg;
 	unsigned		i, n;
@@ -1255,8 +1297,13 @@ static int __init ep_config_from_table(struct musb *musb)
 		n = ARRAY_SIZE(mode_3_cfg);
 		break;
 	case 4:
-		cfg = mode_4_cfg;
-		n = ARRAY_SIZE(mode_4_cfg);
+		if (is_host_active(musb)) {
+			cfg = mode_4h_cfg;
+			n = ARRAY_SIZE(mode_4h_cfg);
+		} else {
+			cfg = mode_4_cfg;
+			n = ARRAY_SIZE(mode_4_cfg);
+		}
 		break;
 	case 5:
 		cfg = mode_5_cfg;
@@ -1383,12 +1430,20 @@ static int __init musb_core_init(u16 musb_type, struct musb *musb)
 		musb->dyn_fifo = true;
 	}
 	if (reg & MUSB_CONFIGDATA_MPRXE) {
-		strcat(aInfo, ", bulk combine");
+ 		strcat(aInfo, ", bulk combine");
+#ifdef C_MP_RX
 		musb->bulk_combine = true;
+#else
+		strcat(aInfo, " (X) ");
+#endif
 	}
 	if (reg & MUSB_CONFIGDATA_MPTXE) {
 		strcat(aInfo, ", bulk split");
+#ifdef C_MP_TX
 		musb->bulk_split = true;
+#else
+		strcat(aInfo, " (X) ");
+#endif
 	}
 	if (reg & MUSB_CONFIGDATA_HBRXE) {
 		strcat(aInfo, ", HB-ISO Rx");
@@ -1925,6 +1980,10 @@ musb_init_controller(struct device *dev, int nIrq, void __iomem *ctrl)
 		goto fail0;
 	}
 
+#if defined(CONFIG_USB_MOT_ANDROID) && defined(CONFIG_USB_MUSB_OTG)
+	g_musb = musb;
+#endif
+
 	pm_runtime_use_autosuspend(musb->controller);
 	pm_runtime_set_autosuspend_delay(musb->controller, 200);
 	pm_runtime_enable(musb->controller);
@@ -1934,6 +1993,21 @@ musb_init_controller(struct device *dev, int nIrq, void __iomem *ctrl)
 	musb->board_set_power = plat->set_power;
 	musb->min_power = plat->min_power;
 	musb->ops = plat->platform_ops;
+
+        /* Clock usage is chip-specific ... functional clock (DaVinci,
+         * OMAP2430), or PHY ref (some TUSB6010 boards).  All this core
+         * code does is make sure a clock handle is available; platform
+         * code manages it during start/stop and suspend/resume.
+         */
+        if (plat->clock) {
+                musb->clock = clk_get(dev, plat->clock);
+                if (IS_ERR(musb->clock)) {
+                        status = PTR_ERR(musb->clock);
+                        musb->clock = NULL;
+                        goto fail1;
+                }
+        }
+
 
 	/* The musb_platform_init() call:
 	 *   - adjusts musb->mregs and musb->isr if needed,

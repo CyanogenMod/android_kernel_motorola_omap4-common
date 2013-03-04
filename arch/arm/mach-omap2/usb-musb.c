@@ -33,6 +33,27 @@
 #include <plat/omap_device.h>
 #include "mux.h"
 
+#include <asm/mach-types.h>
+
+#define CONTROL_DEV_CONF                0x300
+#define PHY_PD				(1 << 0)
+
+#ifdef CONFIG_ARCH_OMAP4
+#define DIE_ID_REG_BASE         (L4_44XX_PHYS + 0x2000)
+#define DIE_ID_REG_OFFSET               0x200
+#else
+#define DIE_ID_REG_BASE         (L4_WK_34XX_PHYS + 0xA000)
+#define DIE_ID_REG_OFFSET               0x218
+#endif /* CONFIG_ARCH_OMAP4 */
+
+#define CLKSEL_60M       24      /* Bit position */
+#define CLKSEL_UTMI      (0 << CLKSEL_60M)
+#define CLKSEL_ULPI      (1 << CLKSEL_60M)
+
+#define OPTFCLKEN_XCLK   8	/* Bit Position */
+#define OPTFCLK_DISABLE  (0 << OPTFCLKEN_XCLK)
+#define OPTFCLK_ENABLE   (1 << OPTFCLKEN_XCLK)
+#define L3INIT_HSUSBOTG_CLKCTRL   0x9360
 #if defined(CONFIG_USB_MUSB_OMAP2PLUS) || defined (CONFIG_USB_MUSB_AM35X)
 
 static struct musb_hdrc_config musb_config = {
@@ -123,6 +144,7 @@ void __init usb_musb_init(struct omap_musb_board_data *musb_board_data)
 	int				bus_id = -1;
 	const char			*oh_name, *name;
 	struct omap_musb_board_data	*board_data;
+	int				usb_clkctrl = 0;
 
 	if (musb_board_data)
 		board_data = musb_board_data;
@@ -138,9 +160,6 @@ void __init usb_musb_init(struct omap_musb_board_data *musb_board_data)
 	musb_plat.power = board_data->power >> 1;
 	musb_plat.mode = board_data->mode;
 	musb_plat.extvbus = board_data->extvbus;
-
-	if (cpu_is_omap44xx())
-		omap4430_phy_init(dev); /* power down the phy */
 
 	if (cpu_is_omap3517() || cpu_is_omap3505()) {
 		oh_name = "am35x_otg_hs";
@@ -172,10 +191,30 @@ void __init usb_musb_init(struct omap_musb_board_data *musb_board_data)
 	dev->coherent_dma_mask = musb_dmamask;
 	put_device(dev);
 
-	if (cpu_is_omap44xx())
-		omap4430_phy_init(dev);
-}
+	if (machine_is_mapphone()) {
+		void __iomem *l4_base = ioremap(L4_44XX_BASE, SZ_4K);
 
+		if (WARN_ON(!l4_base))
+			return;
+
+		usb_clkctrl = __raw_readl(l4_base +
+				L3INIT_HSUSBOTG_CLKCTRL);
+		printk(KERN_INFO "USB MUSB Init-Initial value "
+				"of CLKCTRL is 0x%x \n", usb_clkctrl);
+		if (board_data->interface_type == MUSB_INTERFACE_UTMI)
+			usb_clkctrl &= ~(CLKSEL_ULPI | OPTFCLK_ENABLE);
+		else
+			usb_clkctrl |= CLKSEL_ULPI | OPTFCLK_ENABLE;
+		__raw_writel(usb_clkctrl,
+				l4_base+L3INIT_HSUSBOTG_CLKCTRL);
+		usb_clkctrl = __raw_readl(l4_base +
+				L3INIT_HSUSBOTG_CLKCTRL);
+		printk(KERN_INFO "USB MUSB Post-Initial value "
+				"of CLKCTRL is 0x%x \n", usb_clkctrl);
+	}
+	/*powerdown the phy*/
+	omap_writel(PHY_PD, DIE_ID_REG_BASE + CONTROL_DEV_CONF);
+}
 #else
 void __init usb_musb_init(struct omap_musb_board_data *board_data)
 {

@@ -31,6 +31,7 @@
 #include <mach/irqs.h>
 #include <plat/usb.h>
 #include <plat/omap_device.h>
+#include <mach/ctrl_module_pad_core_44xx.h>
 
 #include "mux.h"
 
@@ -787,6 +788,44 @@ setup_4430ohci_io_mux(const enum usbhs_omap_port_mode *port_mode)
 	return omap_hwmod_mux_init(pads, pads_cnt);
 }
 
+/* Bits that set the drive strength for usbb2 */
+#define USBB2_TLL_DRV_STRENGTH_25_OHMS 0x0FF01000
+
+static void setup_4430ehci_drvstrength(const enum usbhs_omap_port_mode
+					*port_mode)
+{
+	u32 reg;
+
+	switch (port_mode[0]) {
+	case OMAP_EHCI_PORT_MODE_PHY:
+		/* TODO */
+		break;
+	case OMAP_EHCI_PORT_MODE_TLL:
+		/* TODO */
+		break;
+	case OMAP_USBHS_PORT_MODE_UNUSED:
+	default:
+		break;
+	}
+
+	switch (port_mode[1]) {
+	case OMAP_EHCI_PORT_MODE_PHY:
+		/* TODO */
+		break;
+	case OMAP_EHCI_PORT_MODE_TLL:
+		reg = omap_readl(OMAP4_CTRL_MODULE_PAD_CORE |
+			OMAP4_CTRL_MODULE_PAD_CORE_CONTROL_SMART2IO_PADCONF_2);
+
+		omap_writel(reg | USBB2_TLL_DRV_STRENGTH_25_OHMS,
+			OMAP4_CTRL_MODULE_PAD_CORE |
+			OMAP4_CTRL_MODULE_PAD_CORE_CONTROL_SMART2IO_PADCONF_2);
+		break;
+	case OMAP_USBHS_PORT_MODE_UNUSED:
+	default:
+		break;
+	}
+}
+
 void usbhs_wakeup()
 {
 	int workq = 0;
@@ -844,7 +883,9 @@ void __init usbhs_init(const struct usbhs_omap_board_data *pdata)
 		ehci_data.transceiver_clk[i] = pdata->transceiver_clk[i];
 	}
 	ehci_data.phy_reset = pdata->phy_reset;
+	ehci_data.ehci_phy_vbus_not_used = pdata->ehci_phy_vbus_not_used;
 	ohci_data.es2_compatibility = pdata->es2_compatibility;
+	ohci_data.ohci_phy_suspend = pdata->ohci_phy_suspend;
 	usbhs_data.ehci_data = &ehci_data;
 	usbhs_data.ohci_data = &ohci_data;
 
@@ -882,6 +923,11 @@ void __init usbhs_init(const struct usbhs_omap_board_data *pdata)
 		oh[1]->mux = setup_4430ohci_io_mux(pdata->port_mode);
 		if (oh[1]->mux)
 			omap_hwmod_mux(oh[1]->mux, _HWMOD_STATE_ENABLED);
+	}
+
+	if (cpu_is_omap44xx()) {
+		setup_4430ehci_drvstrength(pdata->port_mode);
+		/* TODO - implement for OHCI*/
 	}
 
 	od = omap_device_build_ss(OMAP_USBHS_DEVICE, bus_id, oh, 4,

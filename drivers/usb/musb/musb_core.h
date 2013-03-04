@@ -408,6 +408,7 @@ struct musb_context_registers {
 struct musb {
 	/* device lock */
 	spinlock_t		lock;
+	struct clk		*clock;
 
 	const struct musb_platform_ops *ops;
 	struct musb_context_registers context;
@@ -444,6 +445,10 @@ struct musb {
 	struct timer_list	otg_timer;
 #endif
 	struct notifier_block	nb;
+	/* called with IRQs blocked; ON/nonzero implies starting a session,
+	 * and waiting at least a_wait_vrise_tmout.
+	 */
+	void			(*board_set_vbus)(struct musb *, int is_on);
 
 	struct dma_controller	*dma_controller;
 
@@ -477,6 +482,8 @@ struct musb {
 
 	u8 board_mode;		/* enum musb_mode */
 	int			(*board_set_power)(int state);
+
+	int			(*set_clock)(struct clk *clk, int is_active);
 
 	u8			min_power;	/* vbus for periph, in mA/2 */
 
@@ -550,12 +557,19 @@ struct musb {
 #endif
 };
 
+extern struct musb *g_musb;
+extern int ep_config_from_table(struct musb *musb);
+
 struct musb_otg_work {
 	struct work_struct	work;
 	enum usb_xceiv_events	xceiv_event;
 	struct musb		*musb;
 };
 
+static inline void musb_set_vbus(struct musb *musb, int is_on)
+{
+	musb->ops->set_vbus(musb, is_on);
+}
 #ifdef CONFIG_USB_GADGET_MUSB_HDRC
 static inline struct musb *gadget_to_musb(struct usb_gadget *g)
 {

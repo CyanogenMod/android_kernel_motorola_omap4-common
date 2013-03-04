@@ -564,6 +564,18 @@ static int omap_mcspi_init(struct omap_hwmod *oh, void *unused)
 			return -EINVAL;
 	}
 
+	pdata->mode = OMAP2_MCSPI_MASTER;
+
+	if (spi_num == 0)
+		pdata->force_cs_mode = 1;
+	if (spi_num == 1) {
+#if defined(CONFIG_TTY_SPI_SLAVE_MDM6600)
+		pdata->mode = OMAP2_MCSPI_SLAVE;
+		pdata->dma_mode = 1;
+		pdata->force_cs_mode = 0;
+		pdata->fifo_depth = 32;
+#endif
+	}
 	spi_num++;
 	od = omap_device_build(name, spi_num, oh, pdata,
 				sizeof(*pdata),	omap_mcspi_latency,

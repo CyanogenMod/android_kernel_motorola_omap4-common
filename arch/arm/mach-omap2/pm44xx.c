@@ -1201,7 +1201,9 @@ static irqreturn_t prcm_interrupt_handler (int irq, void *dev_id)
 			omap_hsi_wakeup(hsi_port);
 		}
 		omap_uart_resume_idle();
+#ifndef CONFIG_USB_OOBWAKE
 		usbhs_wakeup();
+#endif
 		omap_debug_uart_resume_idle();
 		omap4_trigger_ioctrl();
 	}

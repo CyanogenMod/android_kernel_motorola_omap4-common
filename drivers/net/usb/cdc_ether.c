@@ -31,6 +31,7 @@
 #include <linux/usb.h>
 #include <linux/usb/cdc.h>
 #include <linux/usb/usbnet.h>
+#include <linux/usb/oob_wake.h>
 
 
 #if defined(CONFIG_USB_NET_RNDIS_HOST) || defined(CONFIG_USB_NET_RNDIS_HOST_MODULE)
@@ -469,6 +470,52 @@ static const struct driver_info wwan_info = {
 	.manage_power =	cdc_manage_power,
 };
 
+#ifdef CONFIG_USB_OOBWAKE
+/* Motorola Wrigley LTE CDC Ethernet Device */
+static void wrigley_cdc_unbind(struct usbnet *dev, struct usb_interface *intf)
+{
+	oob_wake_unregister(intf);
+	usb_disable_autosuspend(interface_to_usbdev(intf));
+	usbnet_cdc_unbind(dev, intf);
+}
+
+#define WRIGLEY_DOWNLINK_MTU    1500
+#define WRIGLEY_AUTOSUSPEND_DELAY 500
+#define WRIGLEY_AUTOSUSPEND_MAX_DELAY 2000
+static int wrigley_cdc_bind(struct usbnet *dev, struct usb_interface *intf)
+{
+	int status = usbnet_cdc_bind(dev, intf);
+
+	if (!status) {
+		dev->rx_urb_size = WRIGLEY_DOWNLINK_MTU +
+						dev->net->hard_header_len;
+		device_init_wakeup(&dev->udev->dev, 1);
+		usb_enable_autosuspend(interface_to_usbdev(intf));
+		oob_wake_register(intf);
+
+		if (dev->udev->parent->lazy_resume)
+			dev->udev->dev.power.autosuspend_delay =
+						WRIGLEY_AUTOSUSPEND_MAX_DELAY;
+		else
+			dev->udev->dev.power.autosuspend_delay =
+						WRIGLEY_AUTOSUSPEND_DELAY;
+
+		dev->udev->parent->dev.power.autosuspend_delay = 0;
+	}
+	return status;
+}
+static const struct driver_info wrigley_cdc_info = {
+	.description =  "Motorola Wrigley LTE CDC Ethernet Device",
+	.flags =        FLAG_ETHER,
+	.bind =         wrigley_cdc_bind,
+	.unbind =       wrigley_cdc_unbind,
+#ifndef CONFIG_MACH_MAPPHONE
+	.status =       cdc_status,
+#endif
+	.manage_power = cdc_manage_power,
+};
+#endif /* CONFIG_USB_OOBWAKE */
+
 /*-------------------------------------------------------------------------*/
 
 #define HUAWEI_VENDOR_ID	0x12D1
@@ -581,6 +628,16 @@ static const struct usb_device_id	products [] = {
  * NOTE:  this match must come AFTER entries blacklisting devices
  * because of bugs/quirks in a given product (like Zaurus, above).
  */
+
+#ifdef CONFIG_USB_OOBWAKE
+{
+	/* Motorola Wrigley LTE CDC Ethernet Device */
+	USB_DEVICE_AND_INTERFACE_INFO(0x22b8, 0x4267, USB_CLASS_COMM,
+		USB_CDC_SUBCLASS_ETHERNET, USB_CDC_PROTO_NONE),
+	.driver_info = (unsigned long) &wrigley_cdc_info,
+},
+#endif /* CONFIG_USB_OOBWAKE */
+
 {
 	USB_INTERFACE_INFO(USB_CLASS_COMM, USB_CDC_SUBCLASS_ETHERNET,
 			USB_CDC_PROTO_NONE),

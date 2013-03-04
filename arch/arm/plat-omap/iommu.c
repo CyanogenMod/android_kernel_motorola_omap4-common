@@ -31,7 +31,7 @@
 	     (__i < (n)) && (cr = __iotlb_read_cr((obj), __i), true);	\
 	     __i++)
 
-#define SET_MPU_CORE_CONSTRAINT	10
+#define SET_MPU_CORE_CONSTRAINT	400
 #define SET_DSP_CONSTRAINT	10
 #define CLEAR_CONSTRAINT	-1
 

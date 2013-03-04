@@ -26,6 +26,11 @@ config SND_OMAP_SOC_DMIC
 config SND_OMAP_SOC_HDMI
 	tristate
 
+config OMAP_HDMI_AUDIO_WA
+	bool "HDMI Audio Work-around for OMAP4430"
+	depends on HDMI_TI_4XXX_IP
+	default y
+
 config SND_OMAP_SOC_N810
 	tristate "SoC Audio support for Nokia N810"
 	depends on SND_OMAP_SOC && MACH_NOKIA_N810 && I2C
@@ -134,16 +139,14 @@ config SND_OMAP_SOC_OMAP4_HDMI
 	  OMAP4 chips
 
 config SND_OMAP4_ABE_USE_ALT_FW
-	bool "Use alternate ABE firmware configuration (DMIC support)"
+	bool "Use alternate ABE firmware, which includes DMIC support"
 	default n
 	depends on SND_OMAP_SOC && SND_OMAP_SOC_ABE_DSP
 	help
-	  The ABE firmware does not have enough room to use the Bluetooth FIR
-	  filters and also include digital microphone (DMIC) support.  Therefore
-	  DMIC support is disabled by default.  If you say Y, it will remove the
-          BT FIR filters and enable DMIC support.
+	  The default firmware has several improvements, but disables the DMIC
+	  (Digital MICrophone) feature.
 
-	  Say Y if you have DMICs (Digital Microphones) that you wish to use.
+	  Say Y if you have DMIC (Digital Microphones) that you wish to use.
 	  Say N otherwise, or if unsure.
 
 config SND_OMAP_SOC_OMAP3_PANDORA
@@ -179,3 +182,13 @@ config SND_OMAP_SOC_IGEP0020
 	select SND_SOC_TWL4030
 	help
 	  Say Y if you want to add support for Soc audio on IGEP v2 board.
+
+config SND_OMAP_SOC_MOTSND
+	tristate "SoC Audio support for Motorola Android Platform"
+	depends on SND_OMAP_SOC && MACH_MAPPHONE
+	select SND_OMAP_SOC_MCBSP
+	select SND_OMAP_SOC_MCASP
+	select SND_OMAP_SOC_ABE
+	select SND_OMAP_SOC_ABE_DSP
+	help
+	  Say Y if building Motorola Android Platform

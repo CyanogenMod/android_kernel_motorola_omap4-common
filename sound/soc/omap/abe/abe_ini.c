@@ -78,7 +78,11 @@ void omap_abe_build_scheduler_table(struct omap_abe *abe);
 void omap_abe_reset_all_ports(struct omap_abe *abe);
 
 const u32 abe_firmware_array[ABE_FIRMWARE_MAX_SIZE] = {
+#if !defined(CONFIG_SND_OMAP4_ABE_USE_ALT_FW)
 #include "abe_firmware.c"
+#else
+#include "abe_firmware_alt.c"
+#endif
 };
 
 

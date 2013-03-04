@@ -478,5 +478,5 @@ int __init omap_hsi_dev_init(void)
 	return omap_hwmod_for_each_by_class(OMAP_HSI_HWMOD_CLASSNAME,
 					    omap_hsi_register, NULL);
 }
-postcore_initcall(omap_hsi_dev_init);
+subsys_initcall(omap_hsi_dev_init);
 

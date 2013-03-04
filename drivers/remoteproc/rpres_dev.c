@@ -23,6 +23,10 @@
 #include <plat/common.h>
 #include <plat/omap-pm.h>
 #include "../../arch/arm/mach-omap2/dvfs.h"
+#include "../../arch/arm/mach-omap2/clockdomain.h"
+
+static struct clockdomain *l3_1_clkdm;
+static struct clockdomain *l3_2_clkdm;
 
 static void _enable_optional_clocks(struct omap_hwmod *oh)
 {
@@ -98,6 +102,45 @@ static int rpres_set_l3_bw(struct platform_device *pdev, long val)
 	return omap_pm_set_min_bus_tput(&pdev->dev, OCP_INITIATOR_AGENT, val);
 }
 
+static int rpres_ivahd_omap_device_enable(struct platform_device *pdev)
+{
+	/*
+	 * WA in order to be able to remove syslink constraints during
+	 * AV playback: set L3_1 and L3_2 to NO_SLEEP
+	 */
+	/* Just to avoid look-up on every call to speed up */
+	if (!l3_1_clkdm)
+		l3_1_clkdm = (struct clockdomain *)clkdm_lookup("l3_1_clkdm");
+
+	if (!l3_2_clkdm)
+		l3_2_clkdm = (struct clockdomain *)clkdm_lookup("l3_2_clkdm");
+
+	clkdm_deny_idle(l3_2_clkdm);
+	clkdm_deny_idle(l3_1_clkdm);
+
+	return omap_device_enable(pdev);
+}
+
+static int rpres_ivahd_omap_device_shutdown(struct platform_device *pdev)
+{
+	int ret = omap_device_shutdown(pdev);
+
+	/*
+	 * WA in order to be able to remove syslink constraints during
+	 * AV playback: WA set L3_1 and L3_2 back to HW_AUTO
+	 */
+	/* Just to avoid look-up on every call to speed up */
+	if (!l3_1_clkdm)
+		l3_1_clkdm = (struct clockdomain *)clkdm_lookup("l3_1_clkdm");
+	if (!l3_2_clkdm)
+		l3_2_clkdm = (struct clockdomain *)clkdm_lookup("l3_2_clkdm");
+
+	clkdm_allow_idle(l3_1_clkdm);
+	clkdm_allow_idle(l3_2_clkdm);
+
+	return ret;
+}
+
 static struct rpres_ops iss_ops = {
 	.start = rpres_iss_enable,
 	.stop = rpres_iss_shutdown,
@@ -106,8 +149,8 @@ static struct rpres_ops iss_ops = {
 };
 
 static struct rpres_ops ivahd_ops = {
-	.start = omap_device_enable,
-	.stop = omap_device_shutdown,
+	.start = rpres_ivahd_omap_device_enable,
+	.stop = rpres_ivahd_omap_device_shutdown,
 	.set_lat = rpres_set_dev_lat,
 	.set_bw = rpres_set_l3_bw,
 	.scale_dev = rpres_scale_dev,

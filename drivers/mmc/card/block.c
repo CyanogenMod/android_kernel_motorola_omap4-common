@@ -35,6 +35,7 @@
 #include <linux/capability.h>
 #include <linux/compat.h>
 
+#include <linux/mmc/core.h>
 #include <linux/mmc/ioctl.h>
 #include <linux/mmc/card.h>
 #include <linux/mmc/host.h>
@@ -67,6 +68,8 @@ static DEFINE_MUTEX(block_mutex);
  */
 static int perdev_minors = CONFIG_MMC_BLOCK_MINORS;
 
+#define MMC_MAX_MINORS	256
+
 /*
  * We've only got one major, so number of mmcblk devices is
  * limited to 256 / number of minors per device.
@@ -74,8 +77,8 @@ static int perdev_minors = CONFIG_MMC_BLOCK_MINORS;
 static int max_devices;
 
 /* 256 minors, so at most 256 separate devices */
-static DECLARE_BITMAP(dev_use, 256);
-static DECLARE_BITMAP(name_use, 256);
+static DECLARE_BITMAP(dev_use, MMC_MAX_MINORS);
+static DECLARE_BITMAP(name_use, MMC_MAX_MINORS);
 
 /*
  * There is one mmc_blk_data per slot.
@@ -108,6 +111,196 @@ static DEFINE_MUTEX(open_lock);
 
 module_param(perdev_minors, int, 0444);
 MODULE_PARM_DESC(perdev_minors, "Minors numbers to allocate per device");
+
+static LIST_HEAD(mmcpart_notifiers);
+
+#define MAX_MMC_HOST (MMC_MAX_MINORS/CONFIG_MMC_BLOCK_MINORS + 1)
+/* mutex used to control both the table and the notifier list */
+DEFINE_MUTEX(mmcpart_table_mutex);
+struct mmcpart_alias {
+	struct raw_hd_struct hd;
+	char partname[BDEVNAME_SIZE];
+};
+static struct mmcpart_alias mmcpart_table[MMC_MAX_MINORS];
+static struct raw_mmc_panic_ops mmc_panic_ops_table[MAX_MMC_HOST];
+
+void register_mmcpart_user(struct mmcpart_notifier *new)
+{
+	int i;
+
+	mutex_lock(&mmcpart_table_mutex);
+
+	list_add(&new->list, &mmcpart_notifiers);
+
+	__module_get(THIS_MODULE);
+
+	for (i = 0; i < MMC_MAX_MINORS; i++)
+		if (!strncmp(mmcpart_table[i].partname,
+				new->partname, BDEVNAME_SIZE) &&
+				mmcpart_table[i].hd.nr_sects) {
+			new->add(&mmcpart_table[i].hd,
+				&mmc_panic_ops_table[i]);
+			break;
+		}
+
+	mutex_unlock(&mmcpart_table_mutex);
+}
+
+int unregister_mmcpart_user(struct mmcpart_notifier *old)
+{
+	int i;
+
+	mutex_lock(&mmcpart_table_mutex);
+
+	module_put(THIS_MODULE);
+
+	for (i = 0; i < MMC_MAX_MINORS; i++)
+		if (!strncmp(mmcpart_table[i].partname,
+				old->partname, BDEVNAME_SIZE)) {
+			old->remove(&mmcpart_table[i].hd);
+			break;
+		}
+
+	list_del(&old->list);
+	mutex_unlock(&mmcpart_table_mutex);
+	return 0;
+}
+
+/*
+ * split string to substrings according to char pattern
+ * deal with multiple characters of pattern
+ * more parameters than max_param are ignored
+ * the input string is modified
+ * return value range from 1~max_param
+ */
+static int split(char *string, char **index_array, char pattern,
+		 int max_param)
+{
+	char *ptr;
+	int count;
+
+	/* thumb through the characters */
+	for (ptr = string, count = 0; count < max_param; count++, ptr++) {
+		/* find the start of substring */
+		while (*ptr == pattern)
+			ptr++;
+		if (*ptr == '\0')
+			break;
+		*(index_array + count) = ptr;
+		/* find the end of substring */
+		while (*ptr != pattern && *ptr != '\0')
+			ptr++;
+		if (*ptr != '\0')
+			*ptr = '\0';
+		else {
+			count++;
+			break;
+		}
+	}
+
+	return count;
+}
+
+/*
+ * mmcparts=mmcblk0:p1(name1),p2(name2)...;mmcblk1:p1(name7)
+ * build to gurantee no parts have the same name
+ */
+#define MMCPARTS_STR_LEN 512
+static int __init mmcpart_setup(char *arg)
+{
+	int host_num;
+	int part_num;
+	int i, j;
+	int host_index;
+	int part_index;
+	char mmcparts_str[MMCPARTS_STR_LEN];
+	char *mmcparts_str_trim[1];
+	char *subhost_index[MAX_MMC_HOST];
+	char *subhostname_index[3];
+	char *subpart_index[CONFIG_MMC_BLOCK_MINORS];
+	char *subpartstr_index[2];
+	char *subpartname_index[2];
+	int ret;
+
+	if (perdev_minors > CONFIG_MMC_BLOCK_MINORS) {
+		pr_err("perdev_minors is bigger than MMC_BLOCK_MINORS. "
+				"Unable to parse mmcparts\n");
+		return -ENOMEM;
+	}
+
+	memset(mmcparts_str, 0, MMCPARTS_STR_LEN);
+	memset(mmcpart_table, 0, sizeof(mmcpart_table));
+	strncpy(mmcparts_str, arg, MMCPARTS_STR_LEN - 1);
+	split(mmcparts_str, mmcparts_str_trim, ' ', 1);
+	host_num = split(mmcparts_str_trim[0], subhost_index, ';',
+		MAX_MMC_HOST);
+	for (i = 0; i < host_num; i++) {
+		if (split(subhost_index[i], subhostname_index, ':', 3) != 2)
+			continue;
+		if ((strlen(subhostname_index[0]) != 7) ||
+			(strncmp(subhostname_index[0], "mmcblk", 6) != 0) ||
+			(subhostname_index[0][6] < '0') ||
+			(subhostname_index[0][6] > 0x30 + MAX_MMC_HOST - 1))
+			continue;
+		host_index = subhostname_index[0][6] - 0x30;
+		part_num = split(subhostname_index[1], subpart_index, ',',
+			MMC_MAX_MINORS);
+		for (j = 0; j < part_num; j++) {
+			if (split(subpart_index[j], subpartstr_index, ')', 2)
+					!= 1)
+				continue;
+			if (split(subpartstr_index[0], subpartname_index,
+					'(', 2) != 2)
+				continue;
+			if (strlen(subpartname_index[0]) < 2)
+				continue;
+			ret = strict_strtol(&subpartname_index[0][1], 0,
+				(long *)&part_index);
+			if ((subpartname_index[0][0] != 'p') || ret ||
+				part_index >= perdev_minors)
+				continue;
+			strncpy(mmcpart_table[(host_index - 1) * perdev_minors
+					+ part_index].partname,
+				subpartname_index[1], BDEVNAME_SIZE - 1);
+		}
+	}
+	return 0;
+}
+early_param("mmcparts", mmcpart_setup);
+
+/*
+ * return alias name of mmc partition
+ * device may not be there
+ */
+void get_mmcalias_by_id(char *buf, int major, int minor)
+{
+	buf[0] = '\0';
+	if (major != MMC_BLOCK_MAJOR)
+		return;
+
+	mutex_lock(&mmcpart_table_mutex);
+	strncpy(buf, mmcpart_table[minor].partname, BDEVNAME_SIZE);
+	buf[BDEVNAME_SIZE - 1] = '\0';
+	mutex_unlock(&mmcpart_table_mutex);
+}
+
+int get_mmcpart_by_name(char *part_name, char *dev_name)
+{
+	int i;
+
+	mutex_lock(&mmcpart_table_mutex);
+	for (i = 0; i < MMC_MAX_MINORS; i++)
+		if (!strncmp(part_name, mmcpart_table[i].partname,
+				BDEVNAME_SIZE)) {
+			snprintf(dev_name, BDEVNAME_SIZE,
+				"mmcblk%dp%d", i / perdev_minors,
+				i % perdev_minors);
+			mutex_unlock(&mmcpart_table_mutex);
+			return 0;
+		}
+	mutex_unlock(&mmcpart_table_mutex);
+	return -1;
+}
 
 static struct mmc_blk_data *mmc_blk_get(struct gendisk *disk)
 {
@@ -854,6 +1047,22 @@ static int mmc_blk_issue_rw_rq(struct mmc_queue *mq, struct request *req)
 		brq.data.blocks = blk_rq_sectors(req);
 
 		/*
+		 * In order to improve performance on Toshiba eMMC parts,
+		 * we are going to split any writes less than or equal to
+		 * 24 sectors that cross a page boundary into multiple
+		 * writes that each access a single 8kB page.  This loop
+		 * will perform multiple write commands until all the
+		 * data has been written.
+		 */
+		if (mmc_card_mmc(card) && card->cid.manfid == 0x11
+			&& rq_data_dir(req) == WRITE
+			&& blk_rq_sectors(req) <= 24) {
+			int sectors_left_in_page = 16 - blk_rq_pos(req) % 16;
+			if (blk_rq_sectors(req) > sectors_left_in_page)
+				brq.data.blocks = sectors_left_in_page;
+		}
+
+		/*
 		 * The block layer doesn't support all sector count
 		 * restrictions, so we need to be prepared for too big
 		 * requests.
@@ -1134,7 +1343,7 @@ static struct mmc_blk_data *mmc_blk_alloc_req(struct mmc_card *card,
 					      const char *subname)
 {
 	struct mmc_blk_data *md;
-	int devidx, ret;
+	int devidx, name_idx, ret;
 
 	devidx = find_first_zero_bit(dev_use, max_devices);
 	if (devidx >= max_devices)
@@ -1154,7 +1363,15 @@ static struct mmc_blk_data *mmc_blk_alloc_req(struct mmc_card *card,
 	 * index anymore so we keep track of a name index.
 	 */
 	if (!subname) {
-		md->name_idx = find_first_zero_bit(name_use, max_devices);
+		name_idx = card->host->index;
+		if (!test_bit(name_idx, name_use)) {
+			md->name_idx = name_idx;
+		} else {
+			printk(KERN_WARNING "Can not use preferred devidx. "
+					"Alloc new one\n");
+			md->name_idx = find_first_zero_bit(name_use, \
+					max_devices);
+		}
 		__set_bit(md->name_idx, name_use);
 	}
 	else
@@ -1329,7 +1546,29 @@ mmc_blk_set_blksize(struct mmc_blk_data *md, struct mmc_card *card)
 
 static void mmc_blk_remove_req(struct mmc_blk_data *md)
 {
+	int i, index;
+	struct mmcpart_notifier *nt;
+
 	if (md) {
+		index = mmc_get_devidx(md->disk);
+		mutex_lock(&mmcpart_table_mutex);
+		for (i = 0; i < md->disk->part_tbl->len; i++) {
+			list_for_each_entry(nt, &mmcpart_notifiers, list)
+				if (strlen(nt->partname) &&
+				    !strncmp(nt->partname,
+				    mmcpart_table[md->disk->first_minor
+					+ i].partname,
+				    BDEVNAME_SIZE))
+					nt->remove(&mmcpart_table[
+							md->disk->first_minor
+							+ i].hd);
+			memset(&mmcpart_table[md->disk->first_minor + i].hd, 0,
+				sizeof(struct raw_hd_struct));
+		}
+		memset(&mmc_panic_ops_table[index], 0,
+			sizeof(struct raw_mmc_panic_ops));
+		mutex_unlock(&mmcpart_table_mutex);
+
 		if (md->disk->flags & GENHD_FL_UP) {
 			device_remove_file(disk_to_dev(md->disk), &md->force_ro);
 
@@ -1402,7 +1641,9 @@ static const struct mmc_fixup blk_fixups[] =
 static int mmc_blk_probe(struct mmc_card *card)
 {
 	struct mmc_blk_data *md, *part_md;
+	struct mmcpart_notifier *nt;
 	int err;
+	int i, index;
 	char cap_str[10];
 
 	/*
@@ -1441,6 +1682,48 @@ static int mmc_blk_probe(struct mmc_card *card)
 		if (mmc_add_disk(part_md))
 			goto out;
 	}
+
+	mutex_lock(&mmcpart_table_mutex);
+	index = mmc_get_devidx(md->disk);
+	if (md->queue.card) {
+		mmc_panic_ops_table[index].type = md->queue.card->type;
+		mmc_panic_ops_table[index].panic_probe =
+			md->queue.card->host->ops->panic_probe;
+		mmc_panic_ops_table[index].panic_write =
+			md->queue.card->host->ops->panic_write;
+		mmc_panic_ops_table[index].panic_erase =
+			md->queue.card->host->ops->panic_erase;
+	}
+	for (i = 0; i < md->disk->part_tbl->len; i++) {
+		if (!md->disk->part_tbl->part[i])
+			continue;
+		mmcpart_table[md->disk->first_minor + i].hd.start_sect =
+			md->disk->part_tbl->part[i]->start_sect;
+		mmcpart_table[md->disk->first_minor + i].hd.nr_sects =
+			md->disk->part_tbl->part[i]->nr_sects;
+		mmcpart_table[md->disk->first_minor + i].hd.partno = i;
+		mmcpart_table[md->disk->first_minor + i].hd.major =
+			md->disk->major;
+		mmcpart_table[md->disk->first_minor + i].hd.first_minor =
+			md->disk->first_minor;
+
+		list_for_each_entry(nt, &mmcpart_notifiers, list) {
+			if (strlen(nt->partname) && !strncmp(nt->partname,
+					mmcpart_table[md->disk->first_minor
+						+ i].partname,
+					BDEVNAME_SIZE)) {
+				printk(KERN_INFO "%s: adding mmcblk%dp%d:%s\n",
+					__func__, index, i,
+					mmcpart_table[md->disk->first_minor
+						+ i].partname);
+				nt->add(&mmcpart_table[md->disk->first_minor
+						+ i].hd,
+					&mmc_panic_ops_table[index]);
+			}
+		}
+	}
+	mutex_unlock(&mmcpart_table_mutex);
+
 	return 0;
 
  out:
@@ -1453,6 +1736,7 @@ static void mmc_blk_remove(struct mmc_card *card)
 {
 	struct mmc_blk_data *md = mmc_get_drvdata(card);
 
+	set_bit(BDI_removing, &md->disk->queue->backing_dev_info.state);
 	mmc_blk_remove_parts(card, md);
 	mmc_claim_host(card->host);
 	mmc_blk_part_switch(card, md);
@@ -1523,7 +1807,7 @@ static int __init mmc_blk_init(void)
 	if (perdev_minors != CONFIG_MMC_BLOCK_MINORS)
 		pr_info("mmcblk: using %d minors per device\n", perdev_minors);
 
-	max_devices = 256 / perdev_minors;
+	max_devices = MMC_MAX_MINORS / perdev_minors;
 
 	res = register_blkdev(MMC_BLOCK_MAJOR, "mmc");
 	if (res)

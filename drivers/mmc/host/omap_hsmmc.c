@@ -43,10 +43,15 @@
 #include <plat/cpu.h>
 #include <plat/omap-pm.h>
 
+#include "omap_hsmmc_raw.h"
+
 /* OMAP HSMMC Host Controller Registers */
 #define OMAP_HSMMC_SYSCONFIG	0x0010
 #define OMAP_HSMMC_SYSSTATUS	0x0014
+#define OMAP_HSMMC_CSRE		0x0024
+#define OMAP_HSMMC_SYSTEST	0x0028
 #define OMAP_HSMMC_CON		0x002C
+#define OMAP_HSMMC_PWCNT	0x0030
 #define OMAP_HSMMC_BLK		0x0104
 #define OMAP_HSMMC_ARG		0x0108
 #define OMAP_HSMMC_CMD		0x010C
@@ -61,7 +66,9 @@
 #define OMAP_HSMMC_STAT		0x0130
 #define OMAP_HSMMC_IE		0x0134
 #define OMAP_HSMMC_ISE		0x0138
+#define OMAP_HSMMC_AC12		0x013C
 #define OMAP_HSMMC_CAPA		0x0140
+#define OMAP_HSMMC_CUR_CAPA	0x0148
 #define OMAP_HSMMC_ADMA_ES	0x0154
 #define OMAP_HSMMC_ADMA_SAL	0x0158
 
@@ -1372,6 +1379,7 @@ static void omap_hsmmc_detect(struct work_struct *work)
 		mmc_detect_change(host->mmc, (HZ * 200) / 1000);
 	}
 	else{
+#ifdef CONFIG_TWL4030_CORE
 	/*
 	 * Because of OMAP4 Silicon errata (i705), we have to turn off the
 	 * PBIAS and VMMC for SD card as soon as we get card disconnect
@@ -1386,6 +1394,9 @@ static void omap_hsmmc_detect(struct work_struct *work)
 		}
 		mmc_release_host(host->mmc);
 		mmc_detect_change(host->mmc, 0);
+#else
+		mmc_detect_change(host->mmc, (HZ * 50) / 1000);
+#endif
 	}
 }
 
@@ -1396,8 +1407,11 @@ static irqreturn_t omap_hsmmc_cd_handler(int irq, void *dev_id)
 {
 	struct omap_hsmmc_host *host = (struct omap_hsmmc_host *)dev_id;
 
-	if (host->suspended)
+	host->mmc->rescan_disable = 0;
+	if (host->suspended) {
+		mmc_set_bus_rescan_policy(host->mmc, 1);
 		return IRQ_HANDLED;
+	}
 	schedule_work(&host->mmc_carddetect_work);
 
 	return IRQ_HANDLED;
@@ -2155,6 +2169,9 @@ static const struct mmc_host_ops omap_hsmmc_ops = {
 	.get_ro = omap_hsmmc_get_ro,
 	.init_card = omap_hsmmc_init_card,
 	/* NYET -- enable_sdio_irq */
+	.panic_probe = raw_mmc_panic_probe,
+	.panic_write = raw_mmc_panic_write,
+	.panic_erase = raw_mmc_panic_erase,
 };
 
 static const struct mmc_host_ops omap_hsmmc_ps_ops = {
@@ -2166,6 +2183,9 @@ static const struct mmc_host_ops omap_hsmmc_ps_ops = {
 	.get_ro = omap_hsmmc_get_ro,
 	.init_card = omap_hsmmc_init_card,
 	/* NYET -- enable_sdio_irq */
+	.panic_probe = raw_mmc_panic_probe,
+	.panic_write = raw_mmc_panic_write,
+	.panic_erase = raw_mmc_panic_erase,
 };
 
 #ifdef CONFIG_DEBUG_FS
@@ -2193,18 +2213,48 @@ static int omap_hsmmc_regs_show(struct seq_file *s, void *data)
 
 	seq_printf(s, "SYSCONFIG:\t0x%08x\n",
 			OMAP_HSMMC_READ(host->base, SYSCONFIG));
+	seq_printf(s, "SYSSTATUS:\t0x%08x\n",
+			OMAP_HSMMC_READ(host->base, SYSSTATUS));
+	seq_printf(s, "CSRE:\t\t0x%08x\n",
+			OMAP_HSMMC_READ(host->base, CSRE));
+	seq_printf(s, "SYSTEST:\t0x%08x\n",
+			OMAP_HSMMC_READ(host->base, SYSTEST));
 	seq_printf(s, "CON:\t\t0x%08x\n",
 			OMAP_HSMMC_READ(host->base, CON));
+	seq_printf(s, "PWCNT:\t\t0x%08x\n",
+			OMAP_HSMMC_READ(host->base, PWCNT));
+	seq_printf(s, "BLK:\t\t0x%08x\n",
+			OMAP_HSMMC_READ(host->base, BLK));
+	seq_printf(s, "ARG:\t\t0x%08x\n",
+			OMAP_HSMMC_READ(host->base, ARG));
+	seq_printf(s, "CMD:\t\t0x%08x\n",
+			OMAP_HSMMC_READ(host->base, CMD));
+	seq_printf(s, "RSP10:\t\t0x%08x\n",
+			OMAP_HSMMC_READ(host->base, RSP10));
+	seq_printf(s, "RSP32:\t\t0x%08x\n",
+			OMAP_HSMMC_READ(host->base, RSP32));
+	seq_printf(s, "RSP54:\t\t0x%08x\n",
+			OMAP_HSMMC_READ(host->base, RSP54));
+	seq_printf(s, "RSP76:\t\t0x%08x\n",
+			OMAP_HSMMC_READ(host->base, RSP76));
+	seq_printf(s, "PSTATE:\t\t0x%08x\n",
+			OMAP_HSMMC_READ(host->base, PSTATE));
 	seq_printf(s, "HCTL:\t\t0x%08x\n",
 			OMAP_HSMMC_READ(host->base, HCTL));
 	seq_printf(s, "SYSCTL:\t\t0x%08x\n",
 			OMAP_HSMMC_READ(host->base, SYSCTL));
+	seq_printf(s, "STAT:\t\t0x%08x\n",
+			OMAP_HSMMC_READ(host->base, STAT));
 	seq_printf(s, "IE:\t\t0x%08x\n",
 			OMAP_HSMMC_READ(host->base, IE));
 	seq_printf(s, "ISE:\t\t0x%08x\n",
 			OMAP_HSMMC_READ(host->base, ISE));
+	seq_printf(s, "AC12:\t\t0x%08x\n",
+			OMAP_HSMMC_READ(host->base, AC12));
 	seq_printf(s, "CAPA:\t\t0x%08x\n",
 			OMAP_HSMMC_READ(host->base, CAPA));
+	seq_printf(s, "CUR_CAPA:\t0x%08x\n",
+			OMAP_HSMMC_READ(host->base, CUR_CAPA));
 
 	pm_runtime_put_sync(host->dev);
 
@@ -2287,6 +2337,7 @@ static int __init omap_hsmmc_probe(struct platform_device *pdev)
 	host->dma_ch	= -1;
 	host->irq	= irq;
 	host->id	= pdev->id;
+	host->mmc->init_delay = pdata->init_delay;
 	host->slot_id	= 0;
 	host->mapbase	= res->start;
 	host->base	= ioremap(host->mapbase, SZ_4K);
@@ -2577,6 +2628,7 @@ static int omap_hsmmc_suspend(struct device *dev)
 	int ret = 0;
 	struct platform_device *pdev = to_platform_device(dev);
 	struct omap_hsmmc_host *host = platform_get_drvdata(pdev);
+	struct mmc_host *mmc = NULL;
 
 	if (host && host->suspended)
 		return 0;
@@ -2595,14 +2647,22 @@ static int omap_hsmmc_suspend(struct device *dev)
 			}
 		}
 		cancel_work_sync(&host->mmc_carddetect_work);
-		if (mmc_slot(host).mmc_data.built_in)
+		if ((mmc_slot(host).mmc_data.built_in)
+		  || ((host->mmc->card) &&
+		      (host->mmc->card->type == MMC_TYPE_SDIO)))
 			host->mmc->pm_flags |= MMC_PM_KEEP_POWER;
 		ret = mmc_suspend_host(host->mmc);
 		if (ret == 0) {
+			if (!mmc_try_claim_host(host->mmc)) {
+				mmc = host->mmc;
+				flush_delayed_work_sync(&mmc->disable);
+			}
 			mmc_host_enable(host->mmc);
 			omap_hsmmc_disable_irq(host);
 			OMAP_HSMMC_WRITE(host->base, HCTL,
 				OMAP_HSMMC_READ(host->base, HCTL) & ~SDBP);
+			if (!mmc)
+				mmc_do_release_host(host->mmc);
 			mmc_host_disable(host->mmc);
 
 			if (host->got_dbclk)

@@ -19,6 +19,7 @@
 #include <linux/mutex.h>
 #include <linux/idr.h>
 #include <linux/log2.h>
+#include <linux/mmc/core.h>
 
 #include "blk.h"
 
@@ -829,7 +830,7 @@ static void *show_partition_start(struct seq_file *seqf, loff_t *pos)
 
 	p = disk_seqf_start(seqf, pos);
 	if (!IS_ERR_OR_NULL(p) && !*pos)
-		seq_puts(seqf, "major minor  #blocks  name\n\n");
+		seq_puts(seqf, "major minor  #blocks  name\talias\n\n");
 	return p;
 }
 
@@ -839,6 +840,7 @@ static int show_partition(struct seq_file *seqf, void *v)
 	struct disk_part_iter piter;
 	struct hd_struct *part;
 	char buf[BDEVNAME_SIZE];
+	char alias[BDEVNAME_SIZE];
 
 	/* Don't show non-partitionable removeable devices or empty devices */
 	if (!get_capacity(sgp) || (!disk_partitionable(sgp) &&
@@ -849,11 +851,14 @@ static int show_partition(struct seq_file *seqf, void *v)
 
 	/* show the full disk and all non-0 size partitions of it */
 	disk_part_iter_init(&piter, sgp, DISK_PITER_INCL_PART0);
-	while ((part = disk_part_iter_next(&piter)))
-		seq_printf(seqf, "%4d  %7d %10llu %s\n",
+	while ((part = disk_part_iter_next(&piter))) {
+		get_mmcalias_by_id(alias, MAJOR(part_devt(part)),
+			MINOR(part_devt(part)));
+		seq_printf(seqf, "%4d  %7d %10llu %s\t%s\n",
 			   MAJOR(part_devt(part)), MINOR(part_devt(part)),
 			   (unsigned long long)part->nr_sects >> 1,
-			   disk_name(sgp, part->partno, buf));
+			   disk_name(sgp, part->partno, buf), alias);
+	}
 	disk_part_iter_exit(&piter);
 
 	return 0;

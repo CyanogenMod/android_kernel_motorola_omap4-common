@@ -379,6 +379,10 @@ int mmc_sd_switch_hs(struct mmc_card *card)
 	if (card->sw_caps.hs_max_dtr == 0)
 		return 0;
 
+	/* LIBtt04854 : All of 2GB sd card set to 24Mhz */
+	if (card->csd.read_blkbits == 10)
+		return 0;
+
 	err = -EIO;
 
 	status = kmalloc(64, GFP_KERNEL);
@@ -916,8 +920,6 @@ static int mmc_sd_init_card(struct mmc_host *host, u32 ocr,
 		err = mmc_send_relative_addr(host, &card->rca);
 		if (err)
 			return err;
-
-		mmc_set_bus_mode(host, MMC_BUSMODE_PUSHPULL);
 	}
 
 	if (!oldcard) {
@@ -1026,6 +1028,12 @@ static void mmc_sd_detect(struct mmc_host *host)
 	 */
 #ifdef CONFIG_MMC_PARANOID_SD_INIT
 	while(retries) {
+		/* detect pin is high, card is removed , no need to send cmd */
+		if (host->ops->get_cd && host->ops->get_cd(host) == 0) {
+			err = -1;
+			break;
+		}
+
 		err = mmc_send_status(host->card, NULL);
 		if (err) {
 			retries--;
@@ -1037,6 +1045,13 @@ static void mmc_sd_detect(struct mmc_host *host)
 	if (!retries) {
 		printk(KERN_ERR "%s(%s): Unable to re-detect card (%d)\n",
 		       __func__, mmc_hostname(host), err);
+	}
+
+	if (!err && host->ops->get_cd && host->ops->get_cd(host) == 0) {
+		printk(KERN_ERR "%s(%s): card is accesible, but detect pin "
+			"is HIGH, card is being unplugged?\n",
+			__func__, mmc_hostname(host));
+		err = -1;
 	}
 #else
 	err = mmc_send_status(host->card, NULL);
@@ -1087,7 +1102,7 @@ static int mmc_sd_resume(struct mmc_host *host)
 
 	mmc_claim_host(host);
 #ifdef CONFIG_MMC_PARANOID_SD_INIT
-	retries = 5;
+	retries = 10;
 	while (retries) {
 		err = mmc_sd_init_card(host, host->ocr, host->card);
 
@@ -1222,10 +1237,11 @@ int mmc_attach_sd(struct mmc_host *host)
 	 * Detect and init the card.
 	 */
 #ifdef CONFIG_MMC_PARANOID_SD_INIT
-	retries = 5;
+	retries = 10;
 	while (retries) {
 		err = mmc_sd_init_card(host, host->ocr, NULL);
 		if (err) {
+			mdelay(60);
 			retries--;
 			continue;
 		}

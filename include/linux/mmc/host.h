@@ -133,6 +133,11 @@ struct mmc_host_ops {
 	int	(*get_cd)(struct mmc_host *host);
 
 	void	(*enable_sdio_irq)(struct mmc_host *host, int enable);
+	int	(*panic_probe)(struct raw_hd_struct *rhd, int type);
+	int	(*panic_write)(struct raw_hd_struct *rhd, char *buf,
+				unsigned int offset, unsigned int len);
+	int	(*panic_erase)(struct raw_hd_struct *rhd, unsigned int offset,
+				unsigned int len);
 
 	/* optional callback for HC quirks */
 	void	(*init_card)(struct mmc_host *host, struct mmc_card *card);
@@ -263,6 +268,7 @@ struct mmc_host {
 
 	struct delayed_work	detect;
 	struct wake_lock	detect_wake_lock;
+	int			init_delay;	/* delay in msec to start host */
 
 	const struct mmc_bus_ops *bus_ops;	/* current bus driver */
 	unsigned int		bus_refs;	/* reference counter */
@@ -270,6 +276,7 @@ struct mmc_host {
 	unsigned int		bus_resume_flags;
 #define MMC_BUSRESUME_MANUAL_RESUME	(1 << 0)
 #define MMC_BUSRESUME_NEEDS_RESUME	(1 << 1)
+#define MMC_BUSRESUME_NEEDS_RESCAN	(1 << 2)
 
 	unsigned int		sdio_irqs;
 	struct task_struct	*sdio_irq_thread;
@@ -324,6 +331,15 @@ static inline void *mmc_priv(struct mmc_host *host)
 #define mmc_hostname(x)	(dev_name(&(x)->class_dev))
 #define mmc_bus_needs_resume(host) ((host)->bus_resume_flags & MMC_BUSRESUME_NEEDS_RESUME)
 #define mmc_bus_manual_resume(host) ((host)->bus_resume_flags & MMC_BUSRESUME_MANUAL_RESUME)
+#define mmc_bus_needs_rescan(host) ((host)->bus_resume_flags & MMC_BUSRESUME_NEEDS_RESCAN)
+
+static inline void mmc_set_bus_rescan_policy(struct mmc_host *host, int rescan)
+{
+	if (rescan)
+		host->bus_resume_flags |= MMC_BUSRESUME_NEEDS_RESCAN;
+	else
+		host->bus_resume_flags &= ~MMC_BUSRESUME_NEEDS_RESCAN;
+}
 
 static inline void mmc_set_bus_resume_policy(struct mmc_host *host, int manual)
 {

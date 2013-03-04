@@ -53,10 +53,13 @@ static int mmc_queue_thread(void *d)
 	struct request_queue *q = mq->queue;
 
 	current->flags |= PF_MEMALLOC;
+	set_freezable();
 
 	down(&mq->thread_sem);
 	do {
 		struct request *req = NULL;
+
+		try_to_freeze();
 
 		spin_lock_irq(q->queue_lock);
 		set_current_state(TASK_INTERRUPTIBLE);

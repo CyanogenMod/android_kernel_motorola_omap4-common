@@ -430,9 +430,22 @@ void __init omap_serial_init_port(struct omap_board_data *bdata,
 	pdata->dma_rx_poll_rate = info->dma_rx_poll_rate;
 	pdata->dma_rx_timeout = info->dma_rx_timeout;
 	pdata->auto_sus_timeout = info->auto_sus_timeout;
+	pdata->board_uart_probe = info->board_uart_probe;
+	pdata->board_uart_remove = info->board_uart_remove;
 	pdata->wake_peer = info->wake_peer;
 	pdata->rts_mux_driver_control = info->rts_mux_driver_control;
-        pdata->wer = info->wer;
+	pdata->wer = info->wer;
+	pdata->ctsrts = info->ctsrts;
+	pdata->rts_padconf = info->rts_padconf;
+	pdata->rts_override = info->rts_override;
+	pdata->padconf = info->padconf;
+	pdata->padconf_wake_ev = info->padconf_wake_ev;
+	pdata->wk_mask = info->wk_mask;
+	pdata->plat_hold_wakelock = info->plat_hold_wakelock;
+	pdata->is_clear_fifo = info->is_clear_fifo;
+	pdata->rx_padconf = info->rx_padconf;
+	pdata->rx_safemode = info->rx_safemode;
+
 	if (bdata->id == omap_uart_con_id) {
 		pdata->console_uart = true;
 #ifdef CONFIG_DEBUG_LL
@@ -496,7 +509,7 @@ void __init omap_serial_board_init(struct omap_uart_port_info *platform_data)
  * Platforms can call this function when they want to have default behaviour
  * for serial ports (e.g initialize them all as serial ports).
  */
-void __init omap_serial_init(void)
+void __init omap_serial_init(struct omap_uart_port_info *platform_data)
 {
 	omap_serial_board_init(NULL);
 }

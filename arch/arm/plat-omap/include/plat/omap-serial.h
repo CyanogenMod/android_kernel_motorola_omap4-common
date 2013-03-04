@@ -80,6 +80,19 @@
 #define OMAP_UART_WER_DSR       0x02
 #define OMAP_UART_WER_CTS       0x01
 
+#define UART1                  (0x0)
+#define UART2                  (0x1)
+#define UART3                  (0x2)
+#define UART4                  (0x3)
+
+/* CONTROL_PADCONF_X bits */
+#define OMAP44XX_PADCONF_WAKEUPENABLE0	(1 << 14)
+#define OMAP44XX_PADCONF_WAKEUPENABLE1	(1 << 30)
+#define OMAP44XX_PADCONF_WAKEUPEVENT0	(1 << 15)
+#define OMAP44XX_PADCONF_WAKEUPEVENT1	(1 << 31)
+
+struct uart_omap_port;
+
 #define OMAP_UART_SCR_TX_EMPTY	0x08
 
 struct omap_uart_port_info {
@@ -99,9 +112,22 @@ struct omap_uart_port_info {
 	void (*enable_wakeup)(struct platform_device *, bool);
 	bool (*chk_wakeup)(struct platform_device *);
 	void (*wake_peer)(struct uart_port *);
+	void (*board_uart_probe)(struct uart_omap_port *);
+	void (*board_uart_remove)(struct uart_omap_port *);
+
 	void __iomem *wk_st;
 	void __iomem *wk_en;
 	u32 wk_mask;
+	unsigned char	ctsrts;
+	void (*plat_hold_wakelock)(void *p, int flag);
+	u16 padconf;
+	u16 rts_padconf;
+	int rts_override;
+	u16 padconf_wake_ev;
+	u16 cts_padconf;
+	u8 is_clear_fifo;
+	u16 rx_padconf;
+	u8 rx_safemode;
 };
 
 struct uart_omap_dma {
@@ -162,14 +188,34 @@ struct uart_omap_port {
 	/* RTS control via driver */
 	unsigned		rts_mux_driver_control:1;
 	unsigned		rts_pullup_in_suspend:1;
+	u16		rts_padconf;
+	int		rts_override;
+	u32		rts_padvalue;
+	u16		padconf;
+	unsigned int		console_uart;
+	u16 padconf_wake_ev;
+	u32 wk_mask;
 
 	unsigned int		errata;
 	unsigned char		wer_restore;
 	void (*enable_wakeup)(struct platform_device *, bool);
 	bool (*chk_wakeup)(struct platform_device *);
 	void (*wake_peer)(struct uart_port *);
+	int			restore_autorts;
+	unsigned char	ctsrts;
+	void (*plat_hold_wakelock)(void *p, int flag);
+	unsigned char is_clear_fifo;
+	int console_writing;
+	u16 rx_padconf;
+	u16 rx_padvalue;
+	u8 rx_safemode;
 };
 
 int omap_serial_ext_uart_enable(u8 port_id);
 int omap_serial_ext_uart_disable(u8 port_id);
+
+extern u32 omap4_ctrl_pad_readl(u16 offset);
+extern void omap4_ctrl_pad_writel(u32 val, u16 offset);
+extern u16 omap4_ctrl_pad_readw(u16 offset);
+extern void omap4_ctrl_pad_writew(u16 val, u16 offset);
 #endif /* __OMAP_SERIAL_H__ */

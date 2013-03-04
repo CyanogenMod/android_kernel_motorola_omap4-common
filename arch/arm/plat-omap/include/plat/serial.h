@@ -106,7 +106,7 @@ struct omap_board_data;
 struct omap_uart_port_info;
 struct omap_device_pad;
 
-extern void omap_serial_init(void);
+extern void omap_serial_init(struct omap_uart_port_info *platform_data);
 extern void omap_serial_board_init(struct omap_uart_port_info *platform_data);
 extern void omap_serial_init_port(struct omap_board_data *bdata,
 		struct omap_uart_port_info *platform_data);

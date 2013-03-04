@@ -29,6 +29,7 @@
 #include <linux/mutex.h>
 
 #include <asm/cputime.h>
+#include <asm/bootinfo.h>
 
 static atomic_t active_count = ATOMIC_INIT(0);
 
@@ -541,6 +542,9 @@ static int cpufreq_governor_interactive(struct cpufreq_policy *policy,
 	unsigned int j;
 	struct cpufreq_interactive_cpuinfo *pcpu;
 	struct cpufreq_frequency_table *freq_table;
+
+	if (bi_powerup_reason() == PU_REASON_CHARGER)
+		return 0;
 
 	switch (event) {
 	case CPUFREQ_GOV_START:

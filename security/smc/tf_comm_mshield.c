@@ -459,11 +459,12 @@ static u32 tf_rpc_init(struct tf_comm *comm)
 
 	spin_lock(&(comm->lock));
 
+#if 0
 	dmac_flush_range((void *)comm->l1_buffer,
 		(void *)(((u32)(comm->l1_buffer)) + PAGE_SIZE));
 	outer_inv_range(__pa(comm->l1_buffer),
 		__pa(comm->l1_buffer) +  PAGE_SIZE);
-
+#endif
 	protocol_version = comm->l1_buffer->protocol_version;
 
 	if ((GET_PROTOCOL_MAJOR_VERSION(protocol_version))

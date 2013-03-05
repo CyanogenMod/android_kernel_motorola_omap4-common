@@ -376,13 +376,13 @@ static void __unflatten_device_tree(struct boot_param_header *blob,
 		return;
 	}
 
-	pr_debug("Unflattening device tree:\n");
-	pr_debug("magic: %08x\n", be32_to_cpu(blob->magic));
-	pr_debug("size: %08x\n", be32_to_cpu(blob->totalsize));
-	pr_debug("version: %08x\n", be32_to_cpu(blob->version));
+	pr_info("Unflattening device tree:\n");
+	pr_info("magic: %08x\n", be32_to_cpu(blob->magic));
+	pr_info("size: %08x\n", be32_to_cpu(blob->totalsize));
+	pr_info("version: %08x\n", be32_to_cpu(blob->version));
 
 	if (be32_to_cpu(blob->magic) != OF_DT_HEADER) {
-		pr_err("Invalid device tree blob header\n");
+		pr_err("Invalid device tree blob header OF_DT_HEADER(%08x) != magic read(%08x)\n", OF_DT_HEADER, be32_to_cpu(blob->magic));
 		return;
 	}
 

@@ -825,6 +825,7 @@ config CACHE_L2X0
 	default y
 	select OUTER_CACHE
 	select OUTER_CACHE_SYNC
+	select PL310_ERRATA_727915 if ARCH_OMAP4
 	help
 	  This option enables the L2x0 PrimeCell.
 

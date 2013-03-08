@@ -342,6 +342,7 @@ void omap_rts_mux_write(u16 val, int num)
 
 static int __init omap_serial_early_init(void)
 {
+#ifdef CONFIG_EMU_UART_DEBUG
 	int i = 0;
 	char omap_tty_name[MAX_UART_HWMOD_NAME_LEN];
 	struct omap_hwmod *oh;
@@ -357,6 +358,7 @@ static int __init omap_serial_early_init(void)
 			return 0;
 		}
 	}
+#endif
 	return 0;
 }
 core_initcall(omap_serial_early_init);
@@ -449,8 +451,10 @@ void __init omap_serial_init_port(struct omap_board_data *bdata,
 
 	if (bdata->id == omap_uart_con_id) {
 		pdata->console_uart = true;
+#ifdef CONFIG_EMU_UART_DEBUG
 #ifdef CONFIG_DEBUG_LL
 		pdata->auto_sus_timeout = -1;
+#endif
 #endif
 	}
 
@@ -461,6 +465,7 @@ void __init omap_serial_init_port(struct omap_board_data *bdata,
 	od = omap_device_build(name, bdata->id, oh, pdata,
 				sizeof(*pdata), omap_uart_latency,
 				ARRAY_SIZE(omap_uart_latency), false);
+
 	WARN(IS_ERR(od), "Could not build omap_device for %s: %s.\n",
 	     name, oh->name);
 

@@ -53,8 +53,10 @@ void asmlinkage __attribute__((weak)) early_printk(const char *fmt, ...)
 
 #define __LOG_BUF_LEN	(1 << CONFIG_LOG_BUF_SHIFT)
 
+#ifdef        CONFIG_EMU_UART_DEBUG
 #ifdef        CONFIG_DEBUG_LL
 extern void printascii(char *);
+#endif
 #endif
 
 /* printk's without a loglevel use this.. */
@@ -944,8 +946,10 @@ asmlinkage int vprintk(const char *fmt, va_list args)
 	printed_len += vscnprintf(printk_buf + printed_len,
 				  sizeof(printk_buf) - printed_len, fmt, args);
 
+#ifdef CONFIG_EMU_UART_DEBUG
 #ifdef	CONFIG_DEBUG_LL
 	printascii(printk_buf);
+#endif
 #endif
 
 	p = printk_buf;

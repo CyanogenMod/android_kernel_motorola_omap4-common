@@ -328,8 +328,10 @@ void __init early_print(const char *str, ...)
 	vsnprintf(buf, sizeof(buf), str, ap);
 	va_end(ap);
 
+#ifdef CONFIG_EMU_UART_DEBUG
 #ifdef CONFIG_DEBUG_LL
 	printascii(buf);
+#endif
 #endif
 	printk("%s", buf);
 }

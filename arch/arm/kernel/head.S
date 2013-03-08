@@ -22,8 +22,10 @@
 #include <asm/thread_info.h>
 #include <asm/system.h>
 
+#ifdef CONFIG_EMU_UART_DEBUG
 #ifdef CONFIG_DEBUG_LL
 #include <mach/debug-macro.S>
+#endif
 #endif
 
 /*
@@ -219,6 +221,7 @@ __create_page_tables:
 	orr	r6, r7, r0
 	str	r6, [r3]
 
+#ifdef CONFIG_EMU_UART_DEBUG
 #ifdef CONFIG_DEBUG_LL
 #ifndef CONFIG_DEBUG_ICEDCC
 	/*
@@ -269,6 +272,7 @@ __create_page_tables:
 	str	r3, [r0]
 	add	r0, r4, #0xd8000000 >> 18
 	str	r3, [r0]
+#endif
 #endif
 #endif
 	mov	pc, lr

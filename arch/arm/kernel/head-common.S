@@ -171,6 +171,7 @@ __lookup_processor_type_data:
 	.size	__lookup_processor_type_data, . - __lookup_processor_type_data
 
 __error_p:
+#ifdef CONFIG_EMU_UART_DEBUG
 #ifdef CONFIG_DEBUG_LL
 	adr	r0, str_p1
 	bl	printascii
@@ -182,6 +183,7 @@ __error_p:
 str_p1:	.asciz	"\nError: unrecognized/unsupported processor variant (0x"
 str_p2:	.asciz	").\n"
 	.align
+#endif
 #endif
 ENDPROC(__error_p)
 

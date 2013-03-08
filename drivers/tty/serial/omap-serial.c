@@ -1664,9 +1664,11 @@ static int serial_omap_probe(struct platform_device *pdev)
 	up->port.mapbase = mem->start;
 	up->port.membase = ioremap(mem->start, mem->end - mem->start);
 
+#ifdef CONFIG_EMU_UART_DEBUG
 	printk("Enabling uart clocks\n");
 	od = to_omap_device(up->pdev);
 	omap_hwmod_enable_clocks(od->hwmods[0]);
+#endif
 
 	if (!up->port.membase) {
 		dev_err(&pdev->dev, "can't ioremap UART\n");

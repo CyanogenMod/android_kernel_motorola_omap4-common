@@ -49,3 +49,6 @@ endif
 
 obj-$(CONFIG_SECURITY_MIDDLEWARE_COMPONENT) += tf_driver.o
 obj-$(CONFIG_SECURITY_MIDDLEWARE_COMPONENT) += rproc_drm.o
+
+plus_sec := $(call as-instr,.arch_extension sec,+sec)
+AFLAGS_bridge_pub2sec.o :=-Wa,-march=armv7-a$(plus_sec)

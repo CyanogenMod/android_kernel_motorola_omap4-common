@@ -522,7 +522,7 @@ static int __devinit omap_wdt_probe(struct platform_device *pdev)
 		wdev->nb.notifier_call = omap_wdt_nb_func;
 		atomic_notifier_chain_register(&touch_watchdog_notifier_head,
 			&wdev->nb);
-		return omap_wdt_setup(wdev);
+		omap_wdt_setup(wdev);
 	}
 
 #ifdef CONFIG_OMAP_WATCHDOG_CONTROL

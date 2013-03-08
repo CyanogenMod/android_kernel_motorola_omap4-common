@@ -916,8 +916,6 @@ static int __devinit adp8870_probe(struct i2c_client *client,
 		goto out;
 	}
 
-	backlight_update_status(bl);
-
 	dev_info(&client->dev, "Rev.%d Backlight\n", data->revid);
 
 	if (pdata->num_leds)

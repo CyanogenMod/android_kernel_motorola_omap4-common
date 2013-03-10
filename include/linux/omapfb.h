@@ -58,9 +58,6 @@
 #define OMAPFB_GET_VRAM_INFO	OMAP_IOR(61, struct omapfb_vram_info)
 #define OMAPFB_SET_TEARSYNC	OMAP_IOW(62, struct omapfb_tearsync_info)
 #define OMAPFB_GET_DISPLAY_INFO	OMAP_IOR(63, struct omapfb_display_info)
-#define OMAPFB_REG_READ     OMAP_IOWR(64, struct omapfb_reg_access)
-#define OMAPFB_REG_WRITE    OMAP_IOW(65, struct omapfb_reg_access)
-
 
 #define OMAPFB_CAPS_GENERIC_MASK	0x00000fff
 #define OMAPFB_CAPS_LCDC_MASK		0x00fff000
@@ -219,13 +216,6 @@ struct omapfb_display_info {
 	__u32 width;	/* phys width of the display in micrometers */
 	__u32 height;	/* phys height of the display in micrometers */
 	__u32 reserved[5];
-};
-
-struct omapfb_reg_access {
-	__u8 address;
-	__u8 use_hs_mode;
-	size_t buffer_size;
-	void __user *buffer;
 };
 
 #ifdef __KERNEL__

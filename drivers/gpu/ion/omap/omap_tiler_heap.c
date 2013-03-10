@@ -30,11 +30,6 @@
 
 #include "../ion_priv.h"
 
-#define DYNAMIC_PAGE_ALLOC
-#ifdef DYNAMIC_PAGE_ALLOC
-#include <asm/cacheflush.h>
-#endif
-
 static int omap_tiler_heap_allocate(struct ion_heap *heap,
 				    struct ion_buffer *buffer,
 				    unsigned long size, unsigned long align,
@@ -72,9 +67,6 @@ int omap_tiler_alloc(struct ion_heap *heap,
 	u32 n_tiler_pages;
 	ion_phys_addr_t addr;
 	int i, ret;
-#ifdef DYNAMIC_PAGE_ALLOC
-	struct page *pg;
-#endif
 
 	if (data->fmt == TILER_PIXEL_FMT_PAGE && data->h != 1) {
 		pr_err("%s: Page mode (1D) allocations must have a height "
@@ -85,8 +77,6 @@ int omap_tiler_alloc(struct ion_heap *heap,
 	ret = tiler_memsize(data->fmt, data->w, data->h,
 			    &n_phys_pages,
 			    &n_tiler_pages);
-	pr_debug("Tiler: w = %u, h = %u, n_phys_pages = %u, n_tiler_pages = %u\n",
-			data->w, data->h, n_phys_pages, n_tiler_pages);
 
 	if (ret) {
 		pr_err("%s: invalid tiler request w %u h %u fmt %u\n", __func__,
@@ -117,22 +107,6 @@ int omap_tiler_alloc(struct ion_heap *heap,
 		goto err_nomem;
 	}
 
-#ifdef DYNAMIC_PAGE_ALLOC
-	for (i = 0; i < n_phys_pages; i++) {
-		pg = alloc_page(GFP_KERNEL | GFP_DMA);
-		if (!pg) {
-			ret = -ENOMEM;
-			printk(KERN_ERR "%s: alloc_page failed\n", __func__);
-			goto err_alloc;
-		}
-		info->phys_addrs[i] = page_to_phys(pg);
-
-		dmac_flush_range((void *)page_address(pg),
-				(void *)page_address(pg) + PAGE_SIZE);
-		outer_flush_range(info->phys_addrs[i],
-				info->phys_addrs[i] + PAGE_SIZE);
-	}
-#else
 	addr = ion_carveout_allocate(heap, n_phys_pages*PAGE_SIZE, 0);
 	if (addr == ION_CARVEOUT_ALLOCATE_FAIL) {
 		for (i = 0; i < n_phys_pages; i++) {
@@ -151,7 +125,6 @@ int omap_tiler_alloc(struct ion_heap *heap,
 		for (i = 0; i < n_phys_pages; i++)
 			info->phys_addrs[i] = addr + i*PAGE_SIZE;
 	}
-#endif
 
 	ret = tiler_pin_block(info->tiler_handle, info->phys_addrs,
 			      info->n_phys_pages);
@@ -181,19 +154,11 @@ err:
 	tiler_unpin_block(info->tiler_handle);
 err_alloc:
 	tiler_free_block_area(info->tiler_handle);
-#ifdef DYNAMIC_PAGE_ALLOC
-	for (i -= 1; i >= 0; i--) {
-		pg = phys_to_page(info->phys_addrs[i]);
-		__free_page(pg);
-	}
-#else
 	if (info->lump)
 		ion_carveout_free(heap, addr, n_phys_pages * PAGE_SIZE);
 	else
 		for (i -= 1; i >= 0; i--)
 			ion_carveout_free(heap, info->phys_addrs[i], PAGE_SIZE);
-#endif
-
 err_nomem:
 	kfree(info);
 	return ret;
@@ -201,21 +166,11 @@ err_nomem:
 
 void omap_tiler_heap_free(struct ion_buffer *buffer)
 {
-#ifdef DYNAMIC_PAGE_ALLOC
-	int i;
-	struct page *pg;
-#endif
 	struct omap_tiler_info *info = buffer->priv_virt;
 
 	tiler_unpin_block(info->tiler_handle);
 	tiler_free_block_area(info->tiler_handle);
 
-#ifdef DYNAMIC_PAGE_ALLOC
-	for (i = 0; i < info->n_phys_pages; i++) {
-		pg = phys_to_page(info->phys_addrs[i]);
-		__free_page(pg);
-	}
-#else
 	if (info->lump) {
 		ion_carveout_free(buffer->heap, info->phys_addrs[0],
 				  info->n_phys_pages*PAGE_SIZE);
@@ -225,7 +180,6 @@ void omap_tiler_heap_free(struct ion_buffer *buffer)
 			ion_carveout_free(buffer->heap,
 					  info->phys_addrs[i], PAGE_SIZE);
 	}
-#endif
 
 	kfree(info);
 }

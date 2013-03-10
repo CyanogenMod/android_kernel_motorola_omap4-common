@@ -632,21 +632,6 @@ struct dsscomp_wait_data {
 	enum dsscomp_wait_phase phase;	/* phase to wait for */
 };
 
-/*
- * ioctl: DSSCIOC_WAIT_NUM_COMPS, struct dsscomp_wait_num_comps_data
- *
- * Use this ioctl to wait on until the number of queued compositions
- * is at most max_comps.
- *
- * Set timeout to desired timeout value in microseconds.
- *
- * Returns: >=0 on success, <0 error value on failure (e.g. -ETIME).
- */
-struct dsscomp_wait_num_comps_data {
-	__u32 timeout_us;	/* timeout in microseconds */
-	__u32 max_comps;	/* wait until queued comps <= this value */
-};
-
 /* IOCTLS */
 #define DSSCIOC_SETUP_MGR	_IOW('O', 128, struct dsscomp_setup_mgr_data)
 #define DSSCIOC_CHECK_OVL	_IOWR('O', 129, struct dsscomp_check_ovl_data)
@@ -656,5 +641,4 @@ struct dsscomp_wait_num_comps_data {
 
 #define DSSCIOC_SETUP_DISPC	_IOW('O', 133, struct dsscomp_setup_dispc_data)
 #define DSSCIOC_SETUP_DISPLAY	_IOW('O', 134, struct dsscomp_setup_display_data)
-#define DSSCIOC_WAIT_NUM_COMPS	_IOW('O', 135, struct dsscomp_wait_num_comps_data)
 #endif

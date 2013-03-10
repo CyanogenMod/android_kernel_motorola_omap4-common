@@ -111,7 +111,7 @@ static LIST_HEAD(rpmsg_omx_services_list);
  */
 #define TILER_START	0x60000000
 #define TILER_END	0x80000000
-#define ION_1D_START	0xBE900000
+#define ION_1D_START	0xBA300000
 #define ION_1D_END	0xBFD00000
 #define ION_1D_VA	0x88000000
 static int _rpmsg_pa_to_da(u32 pa, u32 *da)

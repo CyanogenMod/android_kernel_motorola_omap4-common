@@ -754,7 +754,7 @@ static int rproc_add_mem_entry(struct rproc *rproc, struct fw_resource *rsc)
 		 * carveouts we don't care about in a core dump.
 		 * Perhaps the ION carveout should be reported as RSC_DEVMEM.
 		 */
-		me->core = (rsc->type == RSC_CARVEOUT && rsc->pa != 0xbe900000);
+		me->core = (rsc->type == RSC_CARVEOUT && rsc->pa != 0xba300000);
 #endif
 	}
 

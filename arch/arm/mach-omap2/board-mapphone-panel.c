@@ -25,6 +25,7 @@
 #include <plat/omap_hwmod.h>
 #include <plat/vram.h>
 #include <video/panel.h>
+#include <plat/android-display.h>
 #include "control.h"
 
 #include "dt_path.h"
@@ -76,6 +77,34 @@ enum omap_dss_device_disp_intf {
 enum omap_dss_device_disp_pxl_fmt {
 	OMAP_DSS_DISP_PXL_FMT_RGB565	= 1,
 	OMAP_DSS_DISP_PXL_FMT_RGB888	= 5
+};
+
+#ifdef CONFIG_FB_OMAP2_NUM_FBS
+#define OMAPLFB_NUM_DEV CONFIG_FB_OMAP2_NUM_FBS
+#else
+#define OMAPLFB_NUM_DEV 1
+#endif
+
+static struct sgx_omaplfb_config omaplfb_config_mapphone_panel[OMAPLFB_NUM_DEV] = {
+	{
+	.tiler2d_buffers = 2,
+	.swap_chain_length = 2,
+	}
+};
+
+static struct sgx_omaplfb_platform_data omaplfb_plat_data_mapphone_panel = {
+	.num_configs = OMAPLFB_NUM_DEV,
+	.configs = omaplfb_config_mapphone_panel,
+};
+
+static struct dsscomp_platform_data dsscomp_config_mapphone_panel = {
+		.tiler1d_slotsz = SZ_16M,
+};
+
+static struct omapfb_platform_data mapphone_fb_pdata = {
+	.mem_desc = {
+		.region_cnt = 1,
+	},
 };
 
 static int mapphone_panel_enable(struct omap_dss_device *dssdev);
@@ -140,6 +169,22 @@ static struct omap_dss_device mapphone_lcd_device = {
 	.manual_power_control = OMAP_DSS_MPC_DISABLED,
 	.platform_enable = mapphone_panel_enable,
 	.platform_disable = mapphone_panel_disable,
+	.panel = {
+		.timings = {
+			.x_res			= 540,
+			.y_res			= 960,
+			/*.pixel_clock	= 25000,*/
+			.hfp			= 0,
+			.hsw			= 2,
+			.hbp			= 2,
+			.vfp			= 0,
+			.vsw			= 1,
+			.vbp			= 1,
+		},
+	},
+	.ctrl = {
+		.pixel_size = 24,
+	},
 };
 
 /* It must be matched with device_tree,
@@ -1271,6 +1316,15 @@ static void mapphone_panel_get_fb_info(void)
 
 	of_node_put(panel_node);
 #endif
+}
+
+void mapphone_android_display_setup(struct omap_ion_platform_data *ion)
+{
+	omap_android_display_setup(&mapphone_dss_data,
+				   &dsscomp_config_mapphone_panel,
+				   &omaplfb_plat_data_mapphone_panel,
+				   &mapphone_fb_pdata,
+				   ion);
 }
 
 void __init mapphone_panel_init(void)

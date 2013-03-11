@@ -67,7 +67,7 @@ static inline void __log_state(dsscomp_t c, void *fn, u32 ev)
 {
 #ifdef CONFIG_DSSCOMP_DEBUG_LOG
 	if (c->dbg_used < ARRAY_SIZE(c->dbg_log)) {
-		u32 t = (u32) ktime_to_ms(ktime_get());
+		u32 t = dsscomp_debug_log_timestamp();
 		c->dbg_log[c->dbg_used].t = t;
 		c->dbg_log[c->dbg_used++].state = c->state;
 		__log_event(20 * c->ix + 20, t, c, ev ? "%pf on %s" : "%pf",

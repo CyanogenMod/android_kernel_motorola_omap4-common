@@ -188,7 +188,7 @@ int dsscomp_gralloc_queue(struct dsscomp_setup_dispc_data *d,
 	struct tiler1d_slot *slot = NULL;
 	u32 slot_used = 0;
 #ifdef CONFIG_DEBUG_FS
-	u32 ms = ktime_to_ms(ktime_get());
+	u32 ms = dsscomp_debug_log_timestamp();
 #endif
 	u32 channels[ARRAY_SIZE(d->mgrs)], ch;
 	int skip;

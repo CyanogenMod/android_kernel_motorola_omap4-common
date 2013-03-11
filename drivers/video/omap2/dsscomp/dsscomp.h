@@ -200,11 +200,19 @@ void dsscomp_dbg_events(struct seq_file *s);
 #endif
 
 static inline
+u32 dsscomp_debug_log_timestamp(void)
+{
+	unsigned long long t = local_clock();
+	do_div(t, 1000000);
+	return (u32) t;
+}
+
+static inline
 void __log_event(u32 ix, u32 ms, void *data, const char *fmt, u32 a1, u32 a2)
 {
 #ifdef CONFIG_DSSCOMP_DEBUG_LOG
 	if (!ms)
-		ms = ktime_to_ms(ktime_get());
+		ms = dsscomp_debug_log_timestamp();
 	dbg_events[dbg_event_ix].ms = ms;
 	dbg_events[dbg_event_ix].data = data;
 	dbg_events[dbg_event_ix].fmt = fmt;

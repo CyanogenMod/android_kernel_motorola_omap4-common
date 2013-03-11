@@ -66,6 +66,8 @@ struct dsscomp_dev {
 	u32 num_displays;
 	struct omap_dss_device *displays[MAX_DISPLAYS];
 	struct notifier_block state_notifiers[MAX_DISPLAYS];
+
+	wait_queue_head_t waitq_comp_complete;
 };
 
 extern int debug;
@@ -140,6 +142,8 @@ int dsscomp_wait(struct dsscomp_sync_obj *sync, enum dsscomp_wait_phase phase,
 								int timeout);
 int dsscomp_state_notifier(struct notifier_block *nb,
 						unsigned long arg, void *ptr);
+unsigned long dsscomp_flip_queue_length(void);
+void dsscomp_flip_queue_length_invalidate(void);
 
 /* basic operation - if not using queues */
 int set_dss_ovl_info(struct dss2_ovl_info *oi);

@@ -106,6 +106,31 @@ static void usb_phy_resume_workaround(struct ehci_hcd *ehci)
 	udelay(20);
 }
 
+static void wait_for_local_clock(u64 nsec)
+{
+	u64 start, prev, now;
+
+	start = local_clock();
+	prev = start;
+
+	do {
+		now = local_clock();
+
+		/* Handle local_clock() overflow, the best we can do if the
+		* exact overflow value is unknown is to assume that no time
+		* passed between prev and the overflow value. Then we can
+		* correct nsec and start to account for the time before
+		* the overflow (prev - start).
+		*/
+		if (now < start) {
+			nsec -= prev - start;
+			start = now;
+		}
+		prev = now;
+
+	} while ((now - start) < nsec);
+}
+
 static int omap4_ehci_phy_hub_control(
 	struct usb_hcd	*hcd,
 	u16		typeReq,
@@ -331,13 +356,14 @@ static int omap4_ehci_phy_hub_control(
 			 * - wait 1ms
 			 * - switch back to external clock
 			 */
-			mdelay(4);
+			wait_for_local_clock(4 * 1000 * 1000);
 			temp_reg = omap_readl(L3INIT_HSUSBHOST_CLKCTRL);
 			temp_reg |= 1 << 9;
 			temp_reg &= ~(1 << 25);
 			omap_writel(temp_reg, L3INIT_HSUSBHOST_CLKCTRL);
 
-			mdelay(1);
+			wait_for_local_clock(1 * 1000 * 1000);
+
 			temp_reg &= ~(1 << 9);
 			temp_reg |= 1 << 25;
 			omap_writel(temp_reg, L3INIT_HSUSBHOST_CLKCTRL);

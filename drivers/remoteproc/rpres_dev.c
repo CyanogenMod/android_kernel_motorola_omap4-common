@@ -23,6 +23,7 @@
 #include <plat/common.h>
 #include <plat/omap-pm.h>
 #include "../../arch/arm/mach-omap2/dvfs.h"
+#include "../../arch/arm/mach-omap2/omap2plus-cpufreq.h"
 #include "../../arch/arm/mach-omap2/clockdomain.h"
 
 static struct clockdomain *l3_1_clkdm;
@@ -89,7 +90,10 @@ static int rpres_fdif_shutdown(struct platform_device *pdev)
 
 static int rpres_scale_dev(struct platform_device *pdev, long val)
 {
-	return omap_device_scale(&pdev->dev, &pdev->dev, val);
+	if (&pdev->dev == omap2_get_mpuss_device())
+		return omap_cpufreq_scale(&pdev->dev, val/1000);
+	else
+		return omap_device_scale(&pdev->dev, &pdev->dev, val);
 }
 
 static int rpres_set_dev_lat(struct platform_device *pdev, long val)

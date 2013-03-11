@@ -36,7 +36,7 @@
 #include <plat/common.h>
 #include "cm-regbits-34xx.h"
 #include "clock.h"
-#include "dvfs.h"
+#include "omap2plus-cpufreq.h"
 
 #define MAPPHONE_BP_READY2_AP_GPIO      59
 #define MAPPHONE_IPC_USB_SUSP_GPIO	95
@@ -78,26 +78,19 @@ static struct android_usb_platform_data andusb_plat = {
 
 static void set_usb_performance_mode(struct device *dev, bool enabled)
 {
-	struct device *mpu_dev;
 	dev_dbg(dev, "Performance Mode %s\n", enabled ? "Set" : "Cleared");
-	mpu_dev = omap2_get_mpuss_device();
-
-	if (!mpu_dev) {
-		pr_warning("%s: unable to get the mpu device\n", __func__);
-		return;
-	}
 
 	if (enabled) {
 		if (andusb_plat.bp_tools_mode)
-			omap_device_scale(dev, mpu_dev, 800000000);
+			omap_cpufreq_scale(dev, 800000);
 		else
-			omap_device_scale(dev, mpu_dev, 600000000);
+			omap_cpufreq_scale(dev, 600000);
 		if (num_possible_cpus() > 1
 				&& cpu_online(num_possible_cpus()-1))
 			irq_set_affinity(EHCI_IRQ,
 					cpumask_of(num_possible_cpus()-1));
 	} else {
-		omap_device_scale(dev, mpu_dev, 300000000);
+		omap_cpufreq_scale(dev, 300000);
 		irq_set_affinity(EHCI_IRQ, cpu_online_mask);
 	}
 

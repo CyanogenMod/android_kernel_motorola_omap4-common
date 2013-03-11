@@ -25,11 +25,11 @@
 #include <linux/jiffies.h>
 #include <linux/slab.h>
 #include <plat/common.h>
-#include "../mach-omap2/dvfs.h"
+#include "../mach-omap2/omap2plus-cpufreq.h"
 
 #define OMAP_CPUBOOST_TIME_MAX	10000		/* 10sec */
-#define OMAP_CPUBOOST_FREQ_MIN	300000000	/* 300 MHz */
-#define OMAP_CPUBOOST_FREQ_MAX	1000000000	/* 1 GHz */
+#define OMAP_CPUBOOST_FREQ_MIN	300000		/* 300 MHz */
+#define OMAP_CPUBOOST_FREQ_MAX	1000000		/* 1 GHz */
 
 struct cpuboost_work_struct {
 	struct delayed_work work;
@@ -46,9 +46,7 @@ static unsigned long cpuboost_time;
 
 static int cpuboost_time_set(const char *val, struct kernel_param *kp)
 {
-	struct device *mpu_dev;
 	int ret = param_set_ulong(val, kp);
-	mpu_dev = omap2_get_mpuss_device();
 
 	mutex_lock(&lock);
 
@@ -58,13 +56,13 @@ static int cpuboost_time_set(const char *val, struct kernel_param *kp)
 	cancel_delayed_work(&(cbs->work->work));
 	printk(KERN_INFO "cpuboost_time_set = %ld\n", cpuboost_time);
 	if (cpuboost_time > 0) {
-		omap_device_scale(device, mpu_dev, OMAP_CPUBOOST_FREQ_MAX);
+		omap_cpufreq_scale(device, OMAP_CPUBOOST_FREQ_MAX);
 		schedule_delayed_work(&(cbs->work->work),
 					msecs_to_jiffies(cpuboost_time));
 	}
 
 	if ((ret) || (cpuboost_time == 0)) {
-		omap_device_scale(device, mpu_dev, OMAP_CPUBOOST_FREQ_MIN);
+		omap_cpufreq_scale(device, OMAP_CPUBOOST_FREQ_MIN);
 		printk(KERN_INFO "cpuboost_time cleared\n");
 	}
 	mutex_unlock(&lock);
@@ -77,10 +75,8 @@ module_param_call(cpuboost_time, cpuboost_time_set, param_get_uint,
 
 static void cpuboost_process_work(struct work_struct *work)
 {
-	struct device *mpu_dev = omap2_get_mpuss_device();
-
 	mutex_lock(&lock);
-	omap_device_scale(device, mpu_dev, OMAP_CPUBOOST_FREQ_MIN);
+	omap_cpufreq_scale(device, OMAP_CPUBOOST_FREQ_MIN);
 	printk(KERN_INFO "cpuboost_time cleared\n");
 	cpuboost_time = 0;
 	mutex_unlock(&lock);

@@ -152,38 +152,43 @@ static int _rpmsg_omx_buffer_lookup(struct rpmsg_omx_instance *omx,
 		/* how about an sgx buffer wrapping an ion handle? */
 		{
 			int fd;
-			struct ion_handle *handles[2] = { NULL, NULL };
-			struct ion_client *pvr_ion_client;
-			ion_phys_addr_t paddr2;
+			struct ion_buffer *buffers[2] = { NULL, NULL };
 			int num_handles = 2;
+			ion_phys_addr_t paddr2;
 
 			fd = buffer;
-			if (omap_ion_fd_to_handles(fd, &pvr_ion_client,
-					handles, &num_handles) < 0)
-				goto nopvr;
-
-			/* Get the 1st buffer's da */
-			if ((handles[0]) && !ion_phys(pvr_ion_client,
-					handles[0], &paddr, &unused)) {
-				ret = _rpmsg_pa_to_da((phys_addr_t)paddr, va);
-				if (ret)
-					goto exit;
-
-				/* Get the 2nd buffer's da in da2 */
-				if ((handles[1]) &&
-					!ion_phys(pvr_ion_client,
-					handles[1], &paddr2, &unused)) {
+			if (!omap_ion_share_fd_to_buffers(fd, buffers,
+				&num_handles)) {
+				/* Get the 1st buffer's da */
+				if (buffers[0]) {
+					ret = ion_phys_frm_buffer(buffers[0],
+						&paddr, &unused);
+					if (ret)
+						goto exit;
 					ret = _rpmsg_pa_to_da(
+						(phys_addr_t)paddr, va);
+					if (ret)
+						goto exit;
+
+					/* Get the 2nd buffer's da in da2 */
+					if (buffers[1]) {
+						ret = ion_phys_frm_buffer(
+							buffers[1],
+							&paddr2, &unused);
+						if (ret)
+							goto exit;
+
+						ret = _rpmsg_pa_to_da(
 						(phys_addr_t)paddr2, va2);
-					goto exit;
-				} else
-					goto exit;
+						goto exit;
+					} else
+						goto exit;
+				}
 			}
 		}
-
 	}
-nopvr:
 #endif
+
 	ret =  _rpmsg_pa_to_da((phys_addr_t)tiler_virt2phys(buffer), va);
 exit:
 	if (ret)

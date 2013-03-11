@@ -468,9 +468,11 @@ static s32 __analize_area(enum tiler_fmt fmt, u32 width, u32 height,
 	if (!width || !height)
 		return -EINVAL;
 
+#if 0
 	/* validate tiler format */
 	if ((fmt < TILFMT_8BIT) || (fmt > TILFMT_PAGE))
 		return -EINVAL;
+#endif
 
 	if (fmt == TILFMT_PAGE) {
 		/* adjust size to accomodate offset, only do page alignment */

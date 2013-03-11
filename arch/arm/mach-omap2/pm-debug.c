@@ -52,7 +52,6 @@ u32 sleep_while_idle;
 u32 wakeup_timer_seconds;
 u32 wakeup_timer_milliseconds;
 u32 omap4_device_off_counter = 0;
-u32 enable_regulator_dump;
 
 #ifdef CONFIG_PM_ADVANCED_DEBUG
 static u32 saved_reg_num;
@@ -528,23 +527,6 @@ static int pwrdm_dbg_show_last_timer(struct powerdomain *pwrdm, void *user)
 	return 0;
 }
 
-#ifdef CONFIG_PM_FOOTPRINT
-static ssize_t time_show(struct kobject *kobj, struct kobj_attribute *attr,
-			char *buf)
-{
-	struct seq_file s;
-	s.buf = buf;
-	s.count = 0;
-	s.size = 4096;
-	pwrdm_for_each(pwrdm_dbg_show_timer, &s);
-	return s.count;
-}
-
-static struct kobj_attribute time_attr =
-	__ATTR(time, 0444, time_show, NULL);
-
-#endif
-
 static int pm_dbg_show_counters(struct seq_file *s, void *unused)
 {
 	pwrdm_for_each(pwrdm_dbg_show_counter, s);
@@ -663,7 +645,7 @@ DEFINE_SIMPLE_ATTRIBUTE(pwrdm_suspend_fops, pwrdm_suspend_get,
 			pwrdm_suspend_set, "%llu\n");
 
 #ifdef CONFIG_PM_ADVANCED_DEBUG
-static bool is_addr_valid(void)
+static bool is_addr_valid()
 {
 	int saved_reg_addr_max = 0;
 	/* Only for OMAP4 for the timebeing */
@@ -779,9 +761,6 @@ static int __init pm_dbg_init(void)
 	int i;
 	struct dentry *d;
 	char name[2];
-#ifdef CONFIG_PM_FOOTPRINT
-	int error;
-#endif
 
 	if (pm_dbg_init_done)
 		return 0;
@@ -841,8 +820,6 @@ skip_reg_debufs:
 	(void) debugfs_create_file("wakeup_timer_milliseconds",
 			S_IRUGO | S_IWUSR, d, &wakeup_timer_milliseconds,
 			&pm_dbg_option_fops);
-	(void) debugfs_create_file("enable_regulator_dump", S_IRUGO | S_IWUSR,
-			d, &enable_regulator_dump, &pm_dbg_option_fops);
 
 #ifdef CONFIG_PM_ADVANCED_DEBUG
 	(void) debugfs_create_file("saved_reg_show",
@@ -854,12 +831,6 @@ skip_reg_debufs:
 				 &saved_reg_num);
 #endif
 	pm_dbg_init_done = 1;
-
-#ifdef CONFIG_PM_FOOTPRINT
-	error = sysfs_create_file(power_kobj, &time_attr.attr);
-	if (error)
-		printk(KERN_ERR "sysfs_create_file failed: %d\n", error);
-#endif
 
 	return 0;
 }

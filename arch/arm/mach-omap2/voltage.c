@@ -41,32 +41,6 @@
 #include "vc.h"
 #include "vp.h"
 
-#ifdef CONFIG_PM_FOOTPRINT
-#define MAX_OPP_NUMBER 6
-struct vdd_info_time {
-	char *name;
-	u8 vpconfig;
-	s64 last_time;
-	s64 time[MAX_OPP_NUMBER];
-};
-
-static struct vdd_info_time vdd_info_time_stamp[] = {
-	{
-		.vpconfig = OMAP4_PRM_VP_MPU_CONFIG_OFFSET,
-		.name = "mpu",
-	},
-	{
-		.vpconfig = OMAP4_PRM_VP_CORE_CONFIG_OFFSET,
-		.name = "core",
-	},
-	{
-		.vpconfig = OMAP4_PRM_VP_IVA_CONFIG_OFFSET,
-		.name = "iva",
-	},
-};
-static int vdd_info_time_stamp_size = ARRAY_SIZE(vdd_info_time_stamp);
-#endif
-
 static LIST_HEAD(voltdm_list);
 
 static int __init _config_common_vdd_data(struct voltagedomain *voltdm)
@@ -91,81 +65,6 @@ static int __init _config_common_vdd_data(struct voltagedomain *voltdm)
 
 	return 0;
 }
-
-#ifdef CONFIG_PM_FOOTPRINT
-static ssize_t time_in_opps_show(struct kobject *kobj,
-			struct kobj_attribute *attr, char *buf)
-{
-	int i, j, k;
-	s64 t;
-	char *s = buf;
-	struct voltagedomain *voltdm;
-
-	/* Update timer for previous opp */
-	t = sched_clock();
-
-	list_for_each_entry(voltdm, &voltdm_list, node) {
-		if (!voltdm->vdd || !voltdm->vdd->volt_data ||
-			!voltdm->curr_volt || !voltdm->vp)
-			continue;
-		for (j = 0; j < vdd_info_time_stamp_size; j++) {
-			if (voltdm->vp->vpconfig !=
-				vdd_info_time_stamp[j].vpconfig)
-				continue;
-			s += sprintf(s, "vdd name: %s\n",
-				vdd_info_time_stamp[j].name);
-			for (k = 0; voltdm->vdd->volt_data[k].volt_nominal != 0
-				&& k < MAX_OPP_NUMBER; k++) {
-				if (voltdm->vdd->volt_data[k].volt_nominal ==
-					voltdm->curr_volt->volt_nominal) {
-					vdd_info_time_stamp[j].time[k] += t -
-					vdd_info_time_stamp[j].last_time;
-					vdd_info_time_stamp[j].last_time = t;
-				}
-				s += sprintf(s, "volt = %d, time = %lld\n",
-					voltdm->vdd->volt_data[k].volt_nominal,
-					vdd_info_time_stamp[j].time[k]);
-			}
-			break;
-		}
-	}
-
-	return s - buf;
-}
-
-static struct kobj_attribute time_in_opps_attr =
-	__ATTR(time_in_opps, 0444, time_in_opps_show, NULL);
-
-static void omap_voltage_scale_vdd_update_time(struct voltagedomain *voltdm)
-{
-	int index;
-	s64 t;
-	int i;
-
-	if (voltdm == NULL)
-		return;
-
-	/* Update timer for previous opp */
-	t = sched_clock();
-
-	for (index = 0; index < vdd_info_time_stamp_size; index++) {
-		if (voltdm->vp->vpconfig !=
-			vdd_info_time_stamp[index].vpconfig)
-			continue;
-		for (i = 0; voltdm->vdd->volt_data[i].volt_nominal != 0 &&
-			i < MAX_OPP_NUMBER; i++) {
-			if (voltdm->vdd->volt_data[i].volt_nominal !=
-				voltdm->curr_volt->volt_nominal)
-				continue;
-			vdd_info_time_stamp[index].time[i] +=
-				 t - vdd_info_time_stamp[index].last_time;
-			vdd_info_time_stamp[index].last_time = t;
-			break;
-		}
-		break;
-	}
-}
-#endif
 
 static int __init omap_vdd_data_configure(struct voltagedomain *voltdm)
 {
@@ -267,9 +166,6 @@ int voltdm_scale(struct voltagedomain *voltdm,
 			OMAP_VOLTAGE_POSTCHANGE,
 			(void *)&notify);
 
-#ifdef CONFIG_PM_FOOTPRINT
-	omap_voltage_scale_vdd_update_time(voltdm);
-#endif
 	return ret;
 }
 
@@ -578,10 +474,6 @@ static void __init voltdm_debugfs_init(struct dentry *voltage_dir,
  */
 int __init omap_voltage_late_init(void)
 {
-#ifdef CONFIG_PM_FOOTPRINT
-	int i, j, error;
-#endif
-
 	struct voltagedomain *voltdm;
 	struct dentry *voltage_dir;
 
@@ -616,17 +508,6 @@ int __init omap_voltage_late_init(void)
 	}
 
 	omap_voltage_reconfigure_switchers();
-#ifdef CONFIG_PM_FOOTPRINT
-	for (i = 0; i < vdd_info_time_stamp_size; i++) {
-		vdd_info_time_stamp[i].last_time = sched_clock();
-		for (j = 0; j < MAX_OPP_NUMBER; j++)
-			vdd_info_time_stamp[i].time[j] = 0;
-	}
-
-	error = sysfs_create_file(power_kobj, &time_in_opps_attr.attr);
-	if (error)
-		printk(KERN_ERR "sysfs_create_file failed: %d\n", error);
-#endif
 
 	return 0;
 }

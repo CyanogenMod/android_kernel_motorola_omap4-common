@@ -281,6 +281,7 @@ static int ecryptfs_parse_options(struct ecryptfs_sb_info *sbi, char *options,
 	char *fnek_src;
 	char *cipher_key_bytes_src;
 	char *fn_cipher_key_bytes_src;
+	u32 auth_tok_flags;
 
 	*check_ruid = 0;
 
@@ -297,8 +298,11 @@ static int ecryptfs_parse_options(struct ecryptfs_sb_info *sbi, char *options,
 		case ecryptfs_opt_sig:
 		case ecryptfs_opt_ecryptfs_sig:
 			sig_src = args[0].from;
+			auth_tok_flags =
+				(token == ecryptfs_opt_ecryptfs_sig ?
+				    ECRYPTFS_AUTH_TOK_PRIMARY : 0);
 			rc = ecryptfs_add_global_auth_tok(mount_crypt_stat,
-							  sig_src, 0);
+				sig_src, auth_tok_flags);
 			if (rc) {
 				printk(KERN_ERR "Error attempting to register "
 				       "global sig; rc = [%d]\n", rc);

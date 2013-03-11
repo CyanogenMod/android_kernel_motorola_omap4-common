@@ -145,8 +145,10 @@ static int ecryptfs_show_options(struct seq_file *m, struct vfsmount *mnt)
 			    mount_crypt_stat_list) {
 		if (walker->flags & ECRYPTFS_AUTH_TOK_FNEK)
 			seq_printf(m, ",ecryptfs_fnek_sig=%s", walker->sig);
-		else
+		else if (walker->flags & ECRYPTFS_AUTH_TOK_PRIMARY)
 			seq_printf(m, ",ecryptfs_sig=%s", walker->sig);
+		else
+			seq_printf(m, ",sig=%s", walker->sig);
 	}
 	mutex_unlock(&mount_crypt_stat->global_auth_tok_list_mutex);
 

@@ -333,6 +333,7 @@ struct ecryptfs_dentry_info {
 struct ecryptfs_global_auth_tok {
 #define ECRYPTFS_AUTH_TOK_INVALID 0x00000001
 #define ECRYPTFS_AUTH_TOK_FNEK    0x00000002
+#define ECRYPTFS_AUTH_TOK_PRIMARY 0x00000004
 	u32 flags;
 	struct list_head mount_crypt_stat_list;
 	struct key *global_auth_tok_key;

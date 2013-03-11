@@ -1352,6 +1352,8 @@ static void __init mapphone_map_io(void)
 }
 static void __init mapphone_reserve(void)
 {
+	omap_init_ram_size();
+
 #ifdef CONFIG_ION_OMAP
 	mapphone_android_display_setup(get_omap_ion_platform_data());
 	omap_ion_init();

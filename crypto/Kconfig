@@ -9,6 +9,26 @@ config XOR_BLOCKS
 #
 source "crypto/async_tx/Kconfig"
 
+config CRYPTO_MOTOROLA_FIPS
+	depends on MODULE_EXTRA_COPY
+	boolean "Motorola FIPS module"
+	default y
+	help
+	  This option enables Motorola FIPS 140-2 certified cryptographic
+	  module. You should say yes unless this feature is explicitly
+	  required to be disabled by the requirements of the target
+	  device being built.
+
+config CRYPTO_MOTOROLA_FAULT_INJECTION
+	depends on CRYPTO_MOTOROLA_FIPS
+	boolean "Motorola FIPS module fault injection"
+	default n
+	help
+	  This option enables the injection of faults in Motorola
+	  FIPS 140-2 certified cryptographic module. You should
+	  say no unless this you are building an image for
+	  testing/debugging purpose only.
+
 #
 # Cryptographic API Configuration
 #

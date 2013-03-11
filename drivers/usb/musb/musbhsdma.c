@@ -301,6 +301,10 @@ static irqreturn_t dma_controller_irq(int irq, void *private_data)
 					&(controller->channel[bchannel]);
 			channel = &musb_channel->channel;
 
+			/* dma channel has already been released */
+			if (channel->status == MUSB_DMA_STATUS_UNKNOWN)
+				continue;
+
 			csr = musb_readw(mbase,
 					MUSB_HSDMA_CHANNEL_OFFSET(bchannel,
 							MUSB_HSDMA_CONTROL));

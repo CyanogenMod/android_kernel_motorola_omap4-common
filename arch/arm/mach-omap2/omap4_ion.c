@@ -92,26 +92,27 @@ void __init omap_ion_init(void)
 {
 	int i;
 	int ret;
-	u32 nonsecure = omap4_ion_pdata.nonsecure_tiler2d_size;
 
 	system_512m = (omap_total_ram_size() == SZ_512M);
 
 	/* carveout sizes */
-	omap4_smc_size = (SZ_1M * 3);
+	omap4_smc_size = (SZ_1M * 2);
 
 	if (system_512m) {
 		omap4_ion_heap_secure_input_size = 0;
 		omap4_ducati_heap_size = (SZ_1M * 83);
 		omap4_ion_heap_nonsec_tiler_mem_size = 0;
 		omap4_ion_heap_tiler_mem_size = 0;
-	} else {
-		omap4_ion_heap_secure_input_size = (SZ_1M * 90);
-		omap4_ducati_heap_size = (SZ_1M * 105);
-		omap4_ion_heap_nonsec_tiler_mem_size = nonsecure;
-		omap4_ion_heap_tiler_mem_size =
-					 (ALIGN(omap4_ion_pdata.tiler2d_size +
-					 nonsecure, SZ_2M) - nonsecure);
-	}
+        } else {
+                omap4_ion_heap_secure_input_size = (SZ_1M * 20);
+                omap4_ducati_heap_size = (SZ_1M * 128);
+                /* Reducing carveout sizes used by ION. The expectation is
+                 * the memory will be dynamically allocated for tiler
+                 * instead of being carveout at start
+                 */
+                omap4_ion_heap_nonsec_tiler_mem_size = SZ_4K;
+                omap4_ion_heap_tiler_mem_size = SZ_4K;
+        }
 
 	/* carveout addresses */
 	omap4_smc_addr = PLAT_PHYS_OFFSET + omap_total_ram_size() -

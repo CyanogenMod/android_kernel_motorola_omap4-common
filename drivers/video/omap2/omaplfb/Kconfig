@@ -4,3 +4,7 @@ config OMAPLFB
 	default y
 	help
 	  Support for in-kernel omaplfb. This is used by PVR kernel module.
+
+config OMAPLFB_CLONE_VRAM_TO_TILER
+        bool "Enable HDMI cloning from vram framebuffer to tiler buffer"
+        default n

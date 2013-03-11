@@ -47,11 +47,10 @@ const char *omap4_get_resetreason(void)
 static int __init resetreason_init(void)
 {
 	int i;
-	// FIXME-HASH: Everything I've seen indicates this is ALWAYS set to COLD_RESTART.. so I'm setting it here as well.
-	u32 reasons = 1;
-//		omap4_prminst_read_inst_reg(OMAP4430_PRM_PARTITION,
-//					    OMAP4430_PRM_DEVICE_INST,
-//					    OMAP4_PRM_RSTST_OFFSET);
+	u32 reasons =
+		omap4_prminst_read_inst_reg(OMAP4430_PRM_PARTITION,
+					    OMAP4430_PRM_DEVICE_INST,
+					    OMAP4_PRM_RSTST_OFFSET);
 	char buf[128];
 
 	strlcpy(resetreason, "Last reset was ", sizeof(resetreason));

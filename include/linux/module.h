@@ -417,13 +417,6 @@ struct module
 	} __percpu *refptr;
 #endif
 
-#ifdef CONFIG_MODULE_EXTRA_COPY
-	void *raw_binary_ptr;
-	unsigned long raw_binary_size;
-	void *linked_binary_ptr;
-	unsigned long linked_binary_size;
-#endif
-
 #ifdef CONFIG_CONSTRUCTORS
 	/* Constructor functions. */
 	ctor_fn_t *ctors;

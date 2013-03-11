@@ -42,7 +42,7 @@
 #define BULK_BUFFER_SIZE    16384
 #define ACC_STRING_SIZE     256
 
-#define PROTOCOL_VERSION    1
+#define PROTOCOL_VERSION    2
 
 /* String IDs */
 #define INTERFACE_STRING_INDEX	0
@@ -93,6 +93,8 @@ struct acc_dev {
 
 	/* set to 1 if we have a pending start request */
 	int start_requested;
+
+	int audio_mode;
 
 	/* synchronize access to our device file */
 	atomic_t open_excl;
@@ -694,6 +696,8 @@ static long acc_ioctl(struct file *fp, unsigned code, unsigned long value)
 		break;
 	case ACCESSORY_IS_START_REQUESTED:
 		return dev->start_requested;
+	case ACCESSORY_GET_AUDIO_MODE:
+		return dev->audio_mode;
 	}
 	if (!src)
 		return -EINVAL;
@@ -844,6 +848,7 @@ static int acc_ctrlrequest(struct usb_composite_dev *cdev,
 			memset(dev->uri, 0, sizeof(dev->uri));
 			memset(dev->serial, 0, sizeof(dev->serial));
 			dev->start_requested = 0;
+			dev->audio_mode = 0;
 		}
 	}
 

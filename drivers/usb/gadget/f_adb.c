@@ -194,8 +194,10 @@ static void adb_complete_in(struct usb_ep *ep, struct usb_request *req)
 {
 	struct adb_dev *dev = _adb_dev;
 
-	if (req->status != 0)
+	if (req->status != 0) {
+                pr_err("%s: status = %d\n", __func__, req->status);
 		dev->error = 1;
+        }
 
 	adb_req_put(dev, &dev->tx_idle, req);
 
@@ -207,8 +209,10 @@ static void adb_complete_out(struct usb_ep *ep, struct usb_request *req)
 	struct adb_dev *dev = _adb_dev;
 
 	dev->rx_done = 1;
-	if (req->status != 0)
+	if (req->status != 0) {
+                pr_err("%s: status = %d\n", __func__, req->status);
 		dev->error = 1;
+        }
 
 	wake_up(&dev->read_wq);
 }
@@ -273,14 +277,20 @@ static ssize_t adb_read(struct file *fp, char __user *buf,
 	int ret;
 
 	pr_debug("adb_read(%d)\n", count);
-	if (!_adb_dev)
+	if (!_adb_dev) {
+		pr_err("%s _adb_dev is null\n", __func__);
 		return -ENODEV;
+	}
 
-	if (count > ADB_BULK_BUFFER_SIZE)
+	if (count > ADB_BULK_BUFFER_SIZE) {
+		pr_err("%s err: count > ADB_BULK_BUFFER_SIZE\n", __func__);
 		return -EINVAL;
+	}
 
-	if (adb_lock(&dev->read_excl))
+	if (adb_lock(&dev->read_excl)) {
+		pr_err("%s err: failed to lock read_excl\n", __func__);
 		return -EBUSY;
+	}
 
 	/* we will block until we're online */
 	while (!(dev->online || dev->error)) {
@@ -289,6 +299,8 @@ static ssize_t adb_read(struct file *fp, char __user *buf,
 				(dev->online || dev->error));
 		if (ret < 0) {
 			adb_unlock(&dev->read_excl);
+			pr_err("%s: wait_event for online returned %d\n",
+						__func__, ret);
 			return ret;
 		}
 	}
@@ -304,7 +316,7 @@ requeue_req:
 	dev->rx_done = 0;
 	ret = usb_ep_queue(dev->ep_out, req, GFP_ATOMIC);
 	if (ret < 0) {
-		pr_debug("adb_read: failed to queue req %p (%d)\n", req, ret);
+		pr_err("adb_read: failed to queue req %p (%d)\n", req, ret);
 		r = -EIO;
 		dev->error = 1;
 		goto done;
@@ -318,6 +330,8 @@ requeue_req:
 		dev->error = 1;
 		r = ret;
 		usb_ep_dequeue(dev->ep_out, req);
+		pr_err("%s: wait_event for rx done returned %d\n",
+						__func__, ret);
 		goto done;
 	}
 	if (!dev->error) {
@@ -347,12 +361,16 @@ static ssize_t adb_write(struct file *fp, const char __user *buf,
 	int r = count, xfer;
 	int ret;
 
-	if (!_adb_dev)
+	if (!_adb_dev) {
+		pr_err("%s _adb_dev is null\n", __func__);
 		return -ENODEV;
+	}
 	pr_debug("adb_write(%d)\n", count);
 
-	if (adb_lock(&dev->write_excl))
+	if (adb_lock(&dev->write_excl)) {
+		pr_err("%s err: failed to lock write_excl\n", __func__);
 		return -EBUSY;
+	}
 
 	while (count > 0) {
 		if (dev->error) {
@@ -384,7 +402,7 @@ static ssize_t adb_write(struct file *fp, const char __user *buf,
 			req->length = xfer;
 			ret = usb_ep_queue(dev->ep_in, req, GFP_ATOMIC);
 			if (ret < 0) {
-				pr_debug("adb_write: xfer error %d\n", ret);
+				pr_err("adb_write: xfer error %d\n", ret);
 				dev->error = 1;
 				r = -EIO;
 				break;
@@ -409,11 +427,15 @@ static ssize_t adb_write(struct file *fp, const char __user *buf,
 static int adb_open(struct inode *ip, struct file *fp)
 {
 	pr_info("adb_open\n");
-	if (!_adb_dev)
+	if (!_adb_dev) {
+		pr_err("%s _adb_dev is null\n", __func__);
 		return -ENODEV;
+	}
 
-	if (adb_lock(&_adb_dev->open_excl))
+	if (adb_lock(&_adb_dev->open_excl)) {
+		pr_err("%s err: failed to lock open_excl\n", __func__);
 		return -EBUSY;
+	}
 
 	fp->private_data = _adb_dev;
 

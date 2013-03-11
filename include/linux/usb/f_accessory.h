@@ -36,7 +36,7 @@
 #define ACCESSORY_STRING_URI            4
 #define ACCESSORY_STRING_SERIAL         5
 
-/* Control request for retrieving device's protocol version (currently 1)
+/* Control request for retrieving device's protocol version
  *
  *	requestType:    USB_DIR_IN | USB_TYPE_VENDOR
  *	request:        ACCESSORY_GET_PROTOCOL
@@ -140,5 +140,7 @@
 #define ACCESSORY_GET_STRING_SERIAL         _IOW('M', 6, char[256])
 /* returns 1 if there is a start request pending */
 #define ACCESSORY_IS_START_REQUESTED        _IO('M', 7)
+/* returns audio mode (set via the ACCESSORY_SET_AUDIO_MODE control request) */
+#define ACCESSORY_GET_AUDIO_MODE            _IO('M', 8)
 
 #endif /* __LINUX_USB_F_ACCESSORY_H */

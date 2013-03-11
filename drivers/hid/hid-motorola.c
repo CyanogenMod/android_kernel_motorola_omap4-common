@@ -169,6 +169,7 @@ static void mot_mt_cleanup(struct motorola_sc *sc)
 {
 	int i;
 	bool data_sent = false;
+	bool btn_data_sent = false;
 	for (i = 0; i < MT_MAX_TOUCHES; i++) {
 		if (sc->touches[i].active == true) {
 			sc->touches[i].active = false;
@@ -183,8 +184,8 @@ static void mot_mt_cleanup(struct motorola_sc *sc)
 		}
 	}
 	if (data_sent == true) {
-		input_report_key(sc->input, BTN_TOUCH, 0);
 		input_sync(sc->input);
+		input_report_key(sc->input, BTN_TOUCH, 0);
 	}
 
 	if (sc->prev_btn_state) {
@@ -194,8 +195,11 @@ static void mot_mt_cleanup(struct motorola_sc *sc)
 			input_report_key(sc->input, BTN_RIGHT, 0);
 		if (sc->prev_btn_state & MT_MID_MASK)
 			input_report_key(sc->input, BTN_MIDDLE, 0);
-		input_sync(sc->input);
+		btn_data_sent = true;
 	}
+
+	if ((data_sent == true) || (btn_data_sent == true))
+		input_sync(sc->input);
 
 	sc->prev_btn_state = MT_NO_BUTTON;
 }
@@ -204,7 +208,7 @@ static void mot_mt_cleanup(struct motorola_sc *sc)
  * from the trackpad and convey it across to the Framework layer in
  * Honeycomb or later releases.
  */
-static void mot_mt_process_touch_input(struct motorola_sc *sc, u8 *data)
+static bool mot_mt_process_touch_input(struct motorola_sc *sc, u8 *data)
 {
 	int contact_id, i, offset;
 	bool data_sent = false;
@@ -240,17 +244,20 @@ static void mot_mt_process_touch_input(struct motorola_sc *sc, u8 *data)
 		data_sent = true;
 	}
 	if (data_sent == true) {
+		if (sc->active_touches == 0)
+			input_sync(sc->input);
 		input_report_key(sc->input, BTN_TOUCH,
 					(sc->active_touches > 0));
-		input_sync(sc->input);
+		return true;
 	}
+	return false;
 }
 
 /* mot_mt_process_btn_input : Function to process the button input
  * from the trackpad and convey it across to the Framework layer in
  * Honeycomb or later releases.
  */
-static void mot_mt_process_btn_input(struct motorola_sc *sc, u8 *data)
+static bool mot_mt_process_btn_input(struct motorola_sc *sc, u8 *data)
 {
 	int sent_btn_input = false;
 
@@ -271,9 +278,10 @@ static void mot_mt_process_btn_input(struct motorola_sc *sc, u8 *data)
 	}
 	sc->prev_btn_state = data[1] & MT_ANY_BUTTON_MASK;
 
-	if (sent_btn_input == true) {
-		input_sync(sc->input);
-	}
+	if (sent_btn_input == true)
+		return true;
+	else
+		return false;
 }
 
 /* mot_mt_mouse_state_cleanup : Function to ensure proper btn
@@ -627,6 +635,7 @@ static int mot_rawevent(struct hid_device *hdev, struct hid_report *report,
 		     u8 *data, int size)
 {
 	struct motorola_sc *sc = hid_get_drvdata(hdev);
+	bool touch_data_sent = false, btn_data_sent = false;
 	int current_btn_state;
 
 	dbg_hid("%s\n", __func__);
@@ -668,8 +677,13 @@ static int mot_rawevent(struct hid_device *hdev, struct hid_report *report,
 				} else {
 					sc->ntouches =
 					   (size - MT_HDR_SIZE) / MT_TOUCH_SIZE;
+					touch_data_sent =
 					mot_mt_process_touch_input(sc, data);
+					btn_data_sent =
 					mot_mt_process_btn_input(sc, data);
+					if ((touch_data_sent == true) ||
+						(btn_data_sent == true))
+						input_sync(sc->input);
 					break;
 				}
 			}
@@ -773,7 +787,6 @@ static int mot_input_mapping(struct hid_device *hdev,
 {
 	struct hid_report *rep = field->report;
 	struct motorola_sc *sc = hid_get_drvdata(hdev);
-	int result;
 
 	/* Perform mapping only for a Multitouch device as necessary */
 	if ((sc->quirks) & MOT_MULTITOUCH) {
@@ -799,18 +812,11 @@ static int mot_input_mapping(struct hid_device *hdev,
 					dev_err(&hdev->dev, "Unable to allocate MT dev\n");
 					sc->input = hi->input;
 				} else {
-					mot_mt_setup_mt_dev(sc->input,
-							 hi->input, hdev);
-					result = input_register_device(
-								sc->input);
-					if (result) {
-						dev_err(&hdev->dev,
-						 "input device reg failed\n");
-						input_free_device(sc->input);
-						sc->input = hi->input;
-					} else {
-						sc->mt_dev_allocated = true;
-					}
+					/* Set up the MT input device here.
+					It will be registered in mot_probe after
+					the configuration via input_mapping routine */
+					sc->mt_dev_allocated = true;
+					mot_mt_setup_mt_dev(sc->input,hi->input,hdev);
 				}
 			}
 			switch (usage->hid & HID_USAGE_PAGE) {
@@ -996,6 +1002,18 @@ static int mot_probe(struct hid_device *hdev, const struct hid_device_id *id)
 			} else {
 				sc->mouse_dev_allocated = true;
 			}
+		}
+	}
+
+	/* Register the Multiotuch input device allocated after configuring */
+	if(sc->mt_dev_allocated == true){
+		result = input_register_device(sc->input);
+		if (result) {
+			dev_err(&hdev->dev,
+				"Multitouch input device reg failed\n");
+			input_free_device(sc->input);
+			sc->input = sc->kb_input;
+			sc->mt_dev_allocated = false;
 		}
 	}
 

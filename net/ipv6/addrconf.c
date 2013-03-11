@@ -1733,15 +1733,14 @@ static void addrconf_rs_prd_timer(unsigned long data)
 	struct inet6_ifaddr *ifp = (struct inet6_ifaddr *) data;
 	struct inet6_dev *idev = ifp->idev;
 
+	printk(KERN_DEBUG "%s: RS timer expired.\n", idev->dev->name);
 	read_lock(&idev->lock);
-	if (idev->dead || !(idev->if_flags & IF_READY))
+	if (idev->dead || !(idev->if_flags & IF_READY)) {
+		printk(KERN_ERR "%s: Skip send RS for dead %d, !ready %d\n",
+				idev->dev->name, idev->dead,
+				!(idev->if_flags & IF_READY));
 		goto out;
-
-	if (idev->cnf.forwarding)
-		goto out;
-
-	printk(KERN_DEBUG "%s: sending RS with interval %d\n",
-		idev->dev->name, ifp->idev->cnf.rtr_solicit_interval);
+	}
 
 	ndisc_send_rs(idev->dev, &ifp->addr, &in6addr_linklocal_allrouters);
 	spin_lock_bh(&ifp->lock);
@@ -2896,8 +2895,10 @@ static void addrconf_rs_timer(unsigned long data)
 	if (idev->dead || !(idev->if_flags & IF_READY))
 		goto out;
 
+#if !defined(CONFIG_IPV6_ROUTER_RS_PRD)
 	if (idev->cnf.forwarding)
 		goto out;
+#endif
 
 	/* Announcement received after solicitation was sent */
 	if (idev->if_flags & IF_RA_RCVD)

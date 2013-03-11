@@ -106,11 +106,8 @@ struct android_dev {
 	struct device *dev;
 
 	bool enabled;
-<<<<<<< HEAD
-=======
 	int disable_depth;
 	struct mutex mutex;
->>>>>>> 17ce6ff... usb: gadget: adb: Only enable the gadget when adbd is ready
 	bool connected;
 	bool sw_connected;
 	struct work_struct work;

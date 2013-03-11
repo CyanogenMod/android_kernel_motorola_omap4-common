@@ -69,7 +69,7 @@
 #include "board-mapphone.h"
 #include "board-mapphone-sensors.h"
 #include "board-mapphone-padconf.h"
-#include "omap4_ion.h"
+#include <mach/omap4_ion.h>
 #include "mux.h"
 #include "hsmmc.h"
 #include "timer-gp.h"

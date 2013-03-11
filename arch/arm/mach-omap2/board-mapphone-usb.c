@@ -73,7 +73,7 @@ static struct android_usb_platform_data andusb_plat = {
 	.product_name	= "Android",
 	.android_pid	= mot_android_pid,
 	.nluns			= 1,
-	.cdrom_lun_num          = 0,
+	.cdrom_lun_num          = 2, // Was 0, but we'll just default to 2 now for all devices.
 };
 
 static void set_usb_performance_mode(struct device *dev, bool enabled)

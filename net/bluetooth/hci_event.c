@@ -1,6 +1,6 @@
 /*
    BlueZ - Bluetooth protocol stack for Linux
-   Copyright (c) 2000-2001, 2010-2011, Code Aurora Forum. All rights reserved.
+   Copyright (c) 2000-2001, 2010-2012, Code Aurora Forum. All rights reserved.
 
    Written 2000,2001 by Maxim Krasnyansky <maxk@qualcomm.com>
 
@@ -1117,9 +1117,25 @@ static void hci_cs_auth_requested(struct hci_dev *hdev, __u8 status)
 
 	conn = hci_conn_hash_lookup_handle(hdev, __le16_to_cpu(cp->handle));
 	if (conn) {
-		if (status && conn->state == BT_CONFIG) {
-			hci_proto_connect_cfm(conn, status);
-			hci_conn_put(conn);
+		if (status) {
+			mgmt_auth_failed(hdev->id, &conn->dst, status);
+			clear_bit(HCI_CONN_AUTH_PEND, &conn->pend);
+
+			if (conn->state == BT_CONFIG) {
+				conn->state = BT_CONNECTED;
+				hci_proto_connect_cfm(conn, status);
+				hci_conn_put(conn);
+			} else {
+				hci_auth_cfm(conn, status);
+				hci_conn_hold(conn);
+				conn->disc_timeout = HCI_DISCONN_TIMEOUT;
+				hci_conn_put(conn);
+			}
+
+			if (test_bit(HCI_CONN_ENCRYPT_PEND, &conn->pend)) {
+				clear_bit(HCI_CONN_ENCRYPT_PEND, &conn->pend);
+				hci_encrypt_cfm(conn, status, 0x00);
+			}
 		}
 		conn->auth_initiator = 1;
 	}
@@ -1406,10 +1422,10 @@ static void hci_cs_accept_logical_link(struct hci_dev *hdev, __u8 status)
 		if (chan && chan->state == BT_CONNECT) {
 			chan->state = BT_CLOSED;
 			hci_proto_create_cfm(chan, status);
-			hci_chan_del(chan);
 		}
-	} else if (chan)
-			chan->state = BT_CONNECT2;
+	} else if (chan) {
+		chan->state = BT_CONNECT2;
+	}
 
 	hci_dev_unlock(hdev);
 }
@@ -1435,7 +1451,6 @@ static void hci_cs_create_logical_link(struct hci_dev *hdev, __u8 status)
 		if (chan && chan->state == BT_CONNECT) {
 			chan->state = BT_CLOSED;
 			hci_proto_create_cfm(chan, status);
-			hci_chan_del(chan);
 		}
 	} else if (chan)
 			chan->state = BT_CONNECT2;
@@ -1565,7 +1580,7 @@ static inline void hci_inquiry_result_evt(struct hci_dev *hdev, struct sk_buff *
 		data.rssi		= 0x00;
 		data.ssp_mode		= 0x00;
 		hci_inquiry_cache_update(hdev, &data);
-		mgmt_device_found(hdev->id, &info->bdaddr, 0, 0,
+		mgmt_device_found(hdev->id, &info->bdaddr, ACL_LINK, 0x00, 0,
 					info->dev_class, 0, 0, NULL);
 	}
 
@@ -1617,12 +1632,12 @@ static inline void hci_conn_complete_evt(struct hci_dev *hdev, struct sk_buff *s
 		if (test_bit(HCI_ENCRYPT, &hdev->flags))
 			conn->link_mode |= HCI_LM_ENCRYPT;
 
-		/* Get remote features */
+		/* Get remote version */
 		if (conn->type == ACL_LINK) {
-			struct hci_cp_read_remote_features cp;
+			struct hci_cp_read_remote_version cp;
 			cp.handle = ev->handle;
-			hci_send_cmd(hdev, HCI_OP_READ_REMOTE_FEATURES,
-							sizeof(cp), &cp);
+			hci_send_cmd(hdev, HCI_OP_READ_REMOTE_VERSION,
+				sizeof(cp), &cp);
 		}
 
 		/* Set packet type for incoming connection */
@@ -1853,11 +1868,29 @@ static inline void hci_auth_complete_evt(struct hci_dev *hdev, struct sk_buff *s
 
 		if (test_bit(HCI_CONN_ENCRYPT_PEND, &conn->pend)) {
 			if (!ev->status) {
-				struct hci_cp_set_conn_encrypt cp;
-				cp.handle  = ev->handle;
-				cp.encrypt = 0x01;
-				hci_send_cmd(hdev, HCI_OP_SET_CONN_ENCRYPT,
-							sizeof(cp), &cp);
+				if (conn->link_mode & HCI_LM_ENCRYPT) {
+					/* Encryption implies authentication */
+					conn->link_mode |= HCI_LM_AUTH;
+					conn->link_mode |= HCI_LM_ENCRYPT;
+					conn->sec_level =
+						conn->pending_sec_level;
+					clear_bit(HCI_CONN_ENCRYPT_PEND,
+							&conn->pend);
+					hci_encrypt_cfm(conn, ev->status, 1);
+
+					if (test_bit(HCI_MGMT, &hdev->flags))
+						mgmt_encrypt_change(hdev->id,
+							&conn->dst,
+							ev->status);
+
+				} else {
+					struct hci_cp_set_conn_encrypt cp;
+					cp.handle  = ev->handle;
+					cp.encrypt = 0x01;
+					hci_send_cmd(hdev,
+						HCI_OP_SET_CONN_ENCRYPT,
+						sizeof(cp), &cp);
+				}
 			} else {
 				clear_bit(HCI_CONN_ENCRYPT_PEND, &conn->pend);
 				hci_encrypt_cfm(conn, ev->status, 0x00);
@@ -1921,8 +1954,25 @@ static inline void hci_encrypt_change_evt(struct hci_dev *hdev, struct sk_buff *
 
 			hci_proto_connect_cfm(conn, ev->status);
 			hci_conn_put(conn);
-		} else
-			hci_encrypt_cfm(conn, ev->status, ev->encrypt);
+		} else {
+			/*
+			* If the remote device does not support
+			* Pause Encryption, usually during the
+			* roleSwitch we see Encryption disable
+			* for short duration. Allow remote device
+			* to disable encryption
+			* for short duration in this case.
+			*/
+			if ((ev->encrypt == 0) && (ev->status == 0) &&
+				((conn->features[5] & LMP_PAUSE_ENC) == 0)) {
+				mod_timer(&conn->encrypt_pause_timer,
+					jiffies + msecs_to_jiffies(500));
+				BT_INFO("enc pause timer, enc_pend_flag set");
+			} else {
+				del_timer(&conn->encrypt_pause_timer);
+				hci_encrypt_cfm(conn, ev->status, ev->encrypt);
+			}
+		}
 
 		if (test_bit(HCI_MGMT, &hdev->flags))
 			mgmt_encrypt_change(hdev->id, &conn->dst, ev->status);
@@ -1966,8 +2016,10 @@ static inline void hci_remote_features_evt(struct hci_dev *hdev, struct sk_buff 
 	if (!conn)
 		goto unlock;
 
-	if (!ev->status)
+	if (!ev->status) {
 		memcpy(conn->features, ev->features, 8);
+		mgmt_remote_features(hdev->id, &conn->dst, ev->features);
+	}
 
 	if (conn->state != BT_CONFIG)
 		goto unlock;
@@ -1979,6 +2031,9 @@ static inline void hci_remote_features_evt(struct hci_dev *hdev, struct sk_buff 
 		hci_send_cmd(hdev, HCI_OP_READ_REMOTE_EXT_FEATURES,
 							sizeof(cp), &cp);
 		goto unlock;
+	} else  if (!(lmp_ssp_capable(conn)) && conn->auth_initiator &&
+		(conn->pending_sec_level == BT_SECURITY_HIGH)) {
+		conn->pending_sec_level = BT_SECURITY_MEDIUM;
 	}
 
 	if (!ev->status) {
@@ -2001,7 +2056,24 @@ unlock:
 
 static inline void hci_remote_version_evt(struct hci_dev *hdev, struct sk_buff *skb)
 {
-	BT_DBG("%s", hdev->name);
+	struct hci_ev_remote_version *ev = (void *) skb->data;
+	struct hci_cp_read_remote_features cp;
+	struct hci_conn *conn;
+	BT_DBG("%s status %d", hdev->name, ev->status);
+
+	hci_dev_lock(hdev);
+	cp.handle = ev->handle;
+	hci_send_cmd(hdev, HCI_OP_READ_REMOTE_FEATURES,
+				sizeof(cp), &cp);
+
+	conn = hci_conn_hash_lookup_handle(hdev, __le16_to_cpu(ev->handle));
+	if (!conn)
+		goto unlock;
+	if (!ev->status)
+		mgmt_remote_version(hdev->id, &conn->dst, ev->lmp_ver,
+				ev->manufacturer, ev->lmp_subver);
+unlock:
+	hci_dev_unlock(hdev);
 }
 
 static inline void hci_qos_setup_complete_evt(struct hci_dev *hdev, struct sk_buff *skb)
@@ -2017,6 +2089,9 @@ static inline void hci_cmd_complete_evt(struct hci_dev *hdev, struct sk_buff *sk
 	skb_pull(skb, sizeof(*ev));
 
 	opcode = __le16_to_cpu(ev->opcode);
+
+	if (test_bit(HCI_RESET, &hdev->flags) && (opcode != HCI_OP_RESET))
+		return;
 
 	switch (opcode) {
 	case HCI_OP_INQUIRY_CANCEL:
@@ -2521,6 +2596,7 @@ static inline void hci_pin_code_request_evt(struct hci_dev *hdev, struct sk_buff
 		hci_conn_hold(conn);
 		conn->disc_timeout = HCI_PAIRING_TIMEOUT;
 		hci_conn_put(conn);
+		hci_conn_enter_active_mode(conn, 0);
 	}
 
 	if (!test_bit(HCI_PAIRABLE, &hdev->flags))
@@ -2603,8 +2679,10 @@ static inline void hci_link_key_notify_evt(struct hci_dev *hdev, struct sk_buff 
 		conn->key_type = ev->key_type;
 		hci_disconnect_amp(conn, 0x06);
 
+		conn->link_mode &= ~HCI_LM_ENCRYPT;
 		pin_len = conn->pin_length;
 		hci_conn_put(conn);
+		hci_conn_enter_active_mode(conn, 0);
 	}
 
 	if (test_bit(HCI_LINK_KEYS, &hdev->flags))
@@ -2697,9 +2775,9 @@ static inline void hci_inquiry_result_with_rssi_evt(struct hci_dev *hdev, struct
 			data.rssi		= info->rssi;
 			data.ssp_mode		= 0x00;
 			hci_inquiry_cache_update(hdev, &data);
-			mgmt_device_found(hdev->id, &info->bdaddr, 0, 0,
-						info->dev_class, info->rssi,
-						0, NULL);
+			mgmt_device_found(hdev->id, &info->bdaddr, ACL_LINK,
+						0x00, 0, info->dev_class,
+						info->rssi, 0, NULL);
 		}
 	} else {
 		struct inquiry_info_with_rssi *info = (void *) (skb->data + 1);
@@ -2714,9 +2792,9 @@ static inline void hci_inquiry_result_with_rssi_evt(struct hci_dev *hdev, struct
 			data.rssi		= info->rssi;
 			data.ssp_mode		= 0x00;
 			hci_inquiry_cache_update(hdev, &data);
-			mgmt_device_found(hdev->id, &info->bdaddr, 0, 0,
-						info->dev_class, info->rssi,
-						0, NULL);
+			mgmt_device_found(hdev->id, &info->bdaddr, ACL_LINK,
+						0x00, 0, info->dev_class,
+						info->rssi, 0, NULL);
 		}
 	}
 
@@ -2746,9 +2824,15 @@ static inline void hci_remote_ext_features_evt(struct hci_dev *hdev, struct sk_b
 		conn->ssp_mode = (ev->features[0] & 0x01);
 		/*In case if remote device ssp supported/2.0 device
 		reduce the security level to MEDIUM if it is HIGH*/
-		if (!conn->ssp_mode &&
+		if (!conn->ssp_mode && conn->auth_initiator &&
 			(conn->pending_sec_level == BT_SECURITY_HIGH))
 			conn->pending_sec_level = BT_SECURITY_MEDIUM;
+
+		if (conn->ssp_mode && conn->auth_initiator &&
+			conn->io_capability != 0x03) {
+			conn->pending_sec_level = BT_SECURITY_HIGH;
+			conn->auth_type = HCI_AT_DEDICATED_BONDING_MITM;
+		}
 	}
 
 	if (conn->state != BT_CONFIG)
@@ -2802,7 +2886,7 @@ static inline void hci_sync_conn_complete_evt(struct hci_dev *hdev, struct sk_bu
 		hci_conn_hold_device(conn);
 		hci_conn_add_sysfs(conn);
 		break;
-
+	case 0x10:	/* Connection Accept Timeout Exceeded */
 	case 0x11:	/* Unsupported Feature or Parameter Value */
 	case 0x1c:	/* SCO interval rejected */
 	case 0x1a:	/* Unsupported Remote Feature */
@@ -2857,8 +2941,16 @@ static inline void hci_sync_conn_changed_evt(struct hci_dev *hdev, struct sk_buf
 static inline void hci_sniff_subrate_evt(struct hci_dev *hdev, struct sk_buff *skb)
 {
 	struct hci_ev_sniff_subrate *ev = (void *) skb->data;
+	struct hci_conn *conn =
+		hci_conn_hash_lookup_handle(hdev, __le16_to_cpu(ev->handle));
 
 	BT_DBG("%s status %d", hdev->name, ev->status);
+	if (conn && (ev->max_rx_latency > hdev->sniff_max_interval)) {
+		BT_ERR("value of rx_latency:%d", ev->max_rx_latency);
+		hci_dev_lock(hdev);
+		hci_conn_enter_active_mode(conn, 1);
+		hci_dev_unlock(hdev);
+	}
 }
 
 static inline void hci_extended_inquiry_result_evt(struct hci_dev *hdev, struct sk_buff *skb)
@@ -2884,7 +2976,7 @@ static inline void hci_extended_inquiry_result_evt(struct hci_dev *hdev, struct 
 		data.rssi		= info->rssi;
 		data.ssp_mode		= 0x01;
 		hci_inquiry_cache_update(hdev, &data);
-		mgmt_device_found(hdev->id, &info->bdaddr, 0, 0,
+		mgmt_device_found(hdev->id, &info->bdaddr, ACL_LINK, 0x00, 0,
 				info->dev_class, info->rssi,
 				HCI_MAX_EIR_LENGTH, info->data);
 	}
@@ -3120,12 +3212,47 @@ static inline void hci_le_conn_complete_evt(struct hci_dev *hdev, struct sk_buff
 	conn->state = BT_CONNECTED;
 	conn->disc_timeout = HCI_DISCONN_TIMEOUT;
 	mgmt_connected(hdev->id, &ev->bdaddr, 1);
+	mgmt_le_conn_params(hdev->id, &ev->bdaddr,
+			__le16_to_cpu(ev->interval),
+			__le16_to_cpu(ev->latency),
+			__le16_to_cpu(ev->supervision_timeout));
 
 	hci_conn_hold(conn);
 	hci_conn_hold_device(conn);
 	hci_conn_add_sysfs(conn);
 
 	hci_proto_connect_cfm(conn, ev->status);
+
+unlock:
+	hci_dev_unlock(hdev);
+}
+
+static inline void hci_le_conn_update_complete_evt(struct hci_dev *hdev,
+							struct sk_buff *skb)
+{
+	struct hci_ev_le_conn_update_complete *ev = (void *) skb->data;
+	struct hci_conn *conn;
+
+	BT_DBG("%s status %d", hdev->name, ev->status);
+
+	hci_dev_lock(hdev);
+
+	conn = hci_conn_hash_lookup_handle(hdev,
+				__le16_to_cpu(ev->handle));
+	if (conn == NULL) {
+		BT_ERR("Unknown connection update");
+		goto unlock;
+	}
+
+	if (ev->status) {
+		BT_ERR("Connection update unsuccessful");
+		goto unlock;
+	}
+
+	mgmt_le_conn_params(hdev->id, &conn->dst,
+			__le16_to_cpu(ev->interval),
+			__le16_to_cpu(ev->latency),
+			__le16_to_cpu(ev->supervision_timeout));
 
 unlock:
 	hci_dev_unlock(hdev);
@@ -3180,8 +3307,9 @@ static inline void hci_le_adv_report_evt(struct hci_dev *hdev,
 	hci_dev_lock(hdev);
 
 	while (num_reports--) {
-		mgmt_device_found(hdev->id, &ev->bdaddr, ev->bdaddr_type,
-				1, NULL, 0, ev->length, ev->data);
+		mgmt_device_found(hdev->id, &ev->bdaddr, LE_LINK,
+					ev->bdaddr_type, 1, NULL, 0,
+					ev->length, ev->data);
 		hci_add_adv_entry(hdev, ev);
 		ev = (void *) (ev->data + ev->length + 1);
 	}
@@ -3198,6 +3326,10 @@ static inline void hci_le_meta_evt(struct hci_dev *hdev, struct sk_buff *skb)
 	switch (le_ev->subevent) {
 	case HCI_EV_LE_CONN_COMPLETE:
 		hci_le_conn_complete_evt(hdev, skb);
+		break;
+
+	case HCI_EV_LE_CONN_UPDATE_COMPLETE:
+		hci_le_conn_update_complete_evt(hdev, skb);
 		break;
 
 	case HCI_EV_LE_LTK_REQ:
@@ -3256,19 +3388,15 @@ static inline void hci_log_link_complete(struct hci_dev *hdev,
 
 	chan = hci_chan_list_lookup_id(hdev, ev->phy_handle);
 
-	if (ev->status == 0) {
-		if (chan) {
+	if (chan) {
+		if (ev->status == 0) {
 			chan->ll_handle = __le16_to_cpu(ev->log_handle);
 			chan->state = BT_CONNECTED;
-			hci_proto_create_cfm(chan, ev->status);
-			hci_chan_hold(chan);
-		}
-	} else {
-		if (chan) {
+		} else {
 			chan->state = BT_CLOSED;
-			hci_proto_create_cfm(chan, ev->status);
-			hci_chan_del(chan);
 		}
+
+		hci_proto_create_cfm(chan, ev->status);
 	}
 
 	hci_dev_unlock(hdev);
@@ -3307,10 +3435,8 @@ static inline void hci_disconn_log_link_complete_evt(struct hci_dev *hdev,
 	hci_dev_lock(hdev);
 
 	chan = hci_chan_list_lookup_handle(hdev, __le16_to_cpu(ev->log_handle));
-	if (chan) {
+	if (chan)
 		hci_proto_destroy_cfm(chan, ev->reason);
-		hci_chan_del(chan);
-	}
 
 	hci_dev_unlock(hdev);
 }

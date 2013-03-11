@@ -543,6 +543,11 @@ int hci_dev_open(__u16 dev)
 
 	hci_req_lock(hdev);
 
+	if (test_bit(HCI_UNREGISTER, &hdev->flags)) {
+		ret = -ENODEV;
+		goto done;
+	}
+
 	if (hdev->rfkill && rfkill_blocked(hdev->rfkill)) {
 		ret = -ERFKILL;
 		goto done;
@@ -559,6 +564,19 @@ int hci_dev_open(__u16 dev)
 	if (hdev->open(hdev)) {
 		ret = -EIO;
 		goto done;
+	}
+
+	if (!skb_queue_empty(&hdev->cmd_q)) {
+		BT_ERR("command queue is not empty, purging");
+		skb_queue_purge(&hdev->cmd_q);
+	}
+	if (!skb_queue_empty(&hdev->rx_q)) {
+		BT_ERR("rx queue is not empty, purging");
+		skb_queue_purge(&hdev->rx_q);
+	}
+	if (!skb_queue_empty(&hdev->raw_q)) {
+		BT_ERR("raw queue is not empty, purging");
+		skb_queue_purge(&hdev->raw_q);
 	}
 
 	if (!test_bit(HCI_RAW, &hdev->flags)) {
@@ -639,6 +657,12 @@ static int hci_dev_do_close(struct hci_dev *hdev)
 
 	hci_notify(hdev, HCI_DEV_DOWN);
 
+	if (hdev->dev_type == HCI_BREDR) {
+		hci_dev_lock_bh(hdev);
+		mgmt_powered(hdev->id, 0);
+		hci_dev_unlock_bh(hdev);
+	}
+
 	if (hdev->flush)
 		hdev->flush(hdev);
 
@@ -670,12 +694,6 @@ static int hci_dev_do_close(struct hci_dev *hdev)
 	/* After this point our queues are empty
 	 * and no tasks are scheduled. */
 	hdev->close(hdev);
-
-	if (hdev->dev_type == HCI_BREDR) {
-		hci_dev_lock_bh(hdev);
-		mgmt_powered(hdev->id, 0);
-		hci_dev_unlock_bh(hdev);
-	}
 
 	/* Clear only non-persistent flags */
 	if (test_bit(HCI_MGMT, &hdev->flags))
@@ -1545,6 +1563,8 @@ int hci_unregister_dev(struct hci_dev *hdev)
 	int i;
 
 	BT_DBG("%p name %s bus %d", hdev, hdev->name, hdev->bus);
+
+	set_bit(HCI_UNREGISTER, &hdev->flags);
 
 	write_lock_bh(&hci_dev_list_lock);
 	list_del(&hdev->list);

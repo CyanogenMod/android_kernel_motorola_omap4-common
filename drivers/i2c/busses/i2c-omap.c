@@ -53,6 +53,10 @@
 
 /* timeout waiting for the controller to respond */
 #define OMAP_I2C_TIMEOUT (msecs_to_jiffies(1000))
+#define MAX_I2C_TIMEOUT_COUNT 15
+
+static int i2c2_timeout_count;
+static int i2c4_timeout_count;
 
 /* For OMAP3 I2C_IV has changed to I2C_WE (wakeup enable) */
 enum {
@@ -79,6 +83,7 @@ enum {
 	OMAP_I2C_IRQSTATUS,
 	OMAP_I2C_IRQENABLE_SET,
 	OMAP_I2C_IRQENABLE_CLR,
+	OMAP_I2C_SYSC,
 };
 
 /* I2C Interrupt Enable Register (OMAP_I2C_IE): */
@@ -238,6 +243,7 @@ const static u8 omap4_reg_map[] = {
 	[OMAP_I2C_IRQSTATUS] = 0x28,
 	[OMAP_I2C_IRQENABLE_SET] = 0x2c,
 	[OMAP_I2C_IRQENABLE_CLR] = 0x30,
+	[OMAP_I2C_SYSC] = 0x10,
 };
 
 static inline void omap_i2c_write_reg(struct omap_i2c_dev *i2c_dev,
@@ -251,6 +257,50 @@ static inline u16 omap_i2c_read_reg(struct omap_i2c_dev *i2c_dev, int reg)
 {
 	return __raw_readw(i2c_dev->base +
 				(i2c_dev->regs[reg] << i2c_dev->reg_shift));
+}
+
+static void omap_i2c_dump_registers(struct omap_i2c_dev *i2c_dev,
+						const char *stage)
+{
+	dev_err(i2c_dev->dev, "On %s, registers are:", stage);
+	dev_err(i2c_dev->dev, "OMAP_I2C_REVNB_LO = %04X",
+		omap_i2c_read_reg(i2c_dev, OMAP_I2C_REVNB_LO));
+	dev_err(i2c_dev->dev, "OMAP_I2C_REVNB_HI = %04X",
+		omap_i2c_read_reg(i2c_dev, OMAP_I2C_REVNB_HI));
+	dev_err(i2c_dev->dev, "OMAP_I2C_SYSC=%04X",
+		omap_i2c_read_reg(i2c_dev, OMAP_I2C_SYSC));
+	dev_err(i2c_dev->dev, "OMAP_I2C_IRQSTATUS_RAW = %04X",
+		omap_i2c_read_reg(i2c_dev, OMAP_I2C_IRQSTATUS_RAW));
+	dev_err(i2c_dev->dev, "OMAP_I2C_IRQSTATUS = %04X",
+		omap_i2c_read_reg(i2c_dev, OMAP_I2C_IRQSTATUS));
+	dev_err(i2c_dev->dev, "OMAP_I2C_IRQENABLE_SET = %04X",
+		omap_i2c_read_reg(i2c_dev, OMAP_I2C_IRQENABLE_SET));
+	dev_err(i2c_dev->dev, "OMAP_I2C_IRQENABLE_CLR = %04X",
+		omap_i2c_read_reg(i2c_dev, OMAP_I2C_IRQENABLE_CLR));
+	dev_err(i2c_dev->dev, "OMAP_I2C_WE_REG = %04X",
+		omap_i2c_read_reg(i2c_dev, OMAP_I2C_WE_REG));
+	dev_err(i2c_dev->dev, "OMAP_I2C_SYSS_REG = %04X",
+		omap_i2c_read_reg(i2c_dev, OMAP_I2C_SYSS_REG));
+	dev_err(i2c_dev->dev, "OMAP_I2C_BUF_REG = %04X",
+		omap_i2c_read_reg(i2c_dev, OMAP_I2C_BUF_REG));
+	dev_err(i2c_dev->dev, "OMAP_I2C_CNT_REG = %04X",
+		omap_i2c_read_reg(i2c_dev, OMAP_I2C_CNT_REG));
+	dev_err(i2c_dev->dev, "OMAP_I2C_CON_REG = %04X",
+		omap_i2c_read_reg(i2c_dev, OMAP_I2C_CON_REG));
+	dev_err(i2c_dev->dev, "OMAP_I2C_OA_REG = %04X",
+		omap_i2c_read_reg(i2c_dev, OMAP_I2C_OA_REG));
+	dev_err(i2c_dev->dev, "OMAP_I2C_SA_REG = %04X",
+		omap_i2c_read_reg(i2c_dev, OMAP_I2C_SA_REG));
+	dev_err(i2c_dev->dev, "OMAP_I2C_PSC_REG = %04X",
+		omap_i2c_read_reg(i2c_dev, OMAP_I2C_PSC_REG));
+	dev_err(i2c_dev->dev, "OMAP_I2C_SCLL_REG = %04X",
+		omap_i2c_read_reg(i2c_dev, OMAP_I2C_SCLL_REG));
+	dev_err(i2c_dev->dev, "OMAP_I2C_SCLH_REG = %04X",
+		omap_i2c_read_reg(i2c_dev, OMAP_I2C_SCLH_REG));
+	dev_err(i2c_dev->dev, "OMAP_I2C_SYSTEST_REG = %04X",
+		omap_i2c_read_reg(i2c_dev, OMAP_I2C_SYSTEST_REG));
+	dev_err(i2c_dev->dev, "OMAP_I2C_BUFSTAT_REG = %04X",
+		omap_i2c_read_reg(i2c_dev, OMAP_I2C_BUFSTAT_REG));
 }
 
 static int omap_i2c_hwspinlock_lock(struct omap_i2c_dev *dev)
@@ -614,10 +664,40 @@ static int omap_i2c_xfer_msg(struct i2c_adapter *adap,
 	dev->buf_len = 0;
 	if (r == 0) {
 		dev_err(dev->dev, "controller timed out\n");
+
+		/*
+		 * IKHSS6UPGR-14022: Hack to reboot the phone when
+		 * we start getting contineous i2c timeout errors.
+		 * Only handling timeouts for i2c-2 and i2c-4 on which
+		 * timeouts have been reported.
+		 */
+		if (adap->nr == 2) {
+			if (++i2c2_timeout_count > MAX_I2C_TIMEOUT_COUNT) {
+				omap_i2c_dump_registers(dev, "I2C-2 Timeouts");
+				panic("Unrecoverable I2C-2 HW timeouts");
+			}
+		}
+
+		if (adap->nr == 4) {
+			if (++i2c4_timeout_count > MAX_I2C_TIMEOUT_COUNT) {
+				omap_i2c_dump_registers(dev, "I2C-4 Timeouts");
+				panic("Unrecoverable I2C-4 HW timeouts");
+			}
+		}
+
+		omap_i2c_dump_registers(dev, "Before reset");
 		omap_i2c_reset(dev);
+		omap_i2c_dump_registers(dev, "After reset, before init");
 		omap_i2c_init(dev);
+		omap_i2c_dump_registers(dev, "After init");
 		return -ETIMEDOUT;
 	}
+
+	if (adap->nr == 2)
+		i2c2_timeout_count = 0;
+
+	if (adap->nr == 4)
+		i2c4_timeout_count = 0;
 
 	if (likely(!dev->cmd_err))
 		return 0;

@@ -791,7 +791,8 @@ static int rproc_check_poolmem(struct rproc *rproc, u32 size, phys_addr_t pa)
 	}
 
 	if (pa < pool->st_base || pa + size > pool->st_base + pool->st_size) {
-		pr_warn("section size does not fit within carveout memory\n");
+		pr_warn("section size does not fit within carveout memory pa(0x%x:0x%x) pool(0x%x:0x%x)\n",
+			pa, size, pool->st_base, pool->st_size);
 		return -ENOSPC;
 	}
 

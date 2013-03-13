@@ -397,6 +397,7 @@ config EMU_UART_DEBUG
 config OMAP3_EMU
 	bool "OMAP3 debugging peripherals"
 	depends on ARCH_OMAP3
+	select ARM_AMBA
 	select OC_ETM
 	help
 	  Say Y here to enable debugging hardware of omap3

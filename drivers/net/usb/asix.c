@@ -3487,9 +3487,13 @@ static const struct usb_device_id	products [] = {
         USB_DEVICE (0x0b95, 0x772B),
         .driver_info = (unsigned long) &ax88772b_info,
 }, {
-	/* ASIX AX88772B 10/100 */
-        USB_DEVICE (0x0b95, 0x7E2B),
-        .driver_info = (unsigned long) &ax88772b_info,
+	// ASIX 88772a
+	USB_DEVICE(0x0db0, 0xa877),
+	.driver_info = (unsigned long) &ax88772_info,
+}, {
+	// Asus USB Ethernet Adapter
+	USB_DEVICE (0x0b95, 0x7e2b),
+	.driver_info = (unsigned long) &ax88772_info,
 },
 	{ },		/* END */
 };

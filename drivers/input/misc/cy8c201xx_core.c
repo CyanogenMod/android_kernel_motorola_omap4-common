@@ -414,6 +414,7 @@ struct cy201 {
 	int ic_grpnum;
 	int ic_grpoffset;
 #endif
+	bool resuming;	/* Workaround I2C lockup issues */
 };
 
 static int cy201_hw_wake(struct cy201 *ts, int wake)
@@ -443,9 +444,16 @@ static int cy201_read_block_data(struct cy201 *ts, u8 command,
 		if (retval) {
 			pr_warning("%s: try to read I2C bus (tries =%d)\n",
 				__func__, tries);
+			if ((retval == -ETIMEDOUT) && (ts->resuming)) {
+				pr_err("%s: Timeout error during resume\n",
+					__func__);
+				goto cy201_read_block_data_fail;
+			}
 			msleep(CY_DELAY_DFLT);
 		}
 	}
+
+cy201_read_block_data_fail:
 	cy201_hw_wake(ts, 1);
 
 	if (retval < 0) {
@@ -473,9 +481,16 @@ static int cy201_write_block_data(struct cy201 *ts, u8 command,
 		if (retval) {
 			pr_warning("%s: try to write I2C bus (tries =%d)\n",
 				__func__, tries);
+			if ((retval == -ETIMEDOUT) && (ts->resuming)) {
+				pr_err("%s: Timeout error during resume\n",
+					__func__);
+				goto cy201_write_block_data_fail;
+			}
 			msleep(CY_DELAY_DFLT);
 		}
 	}
+
+cy201_write_block_data_fail:
 	cy201_hw_wake(ts, 1);
 
 	if (retval < 0) {
@@ -1044,6 +1059,17 @@ static void cy201_ldr_free(struct cy201 *ts)
 static int cy201_startup(struct cy201 *ts)
 {
 	int retval;
+	int tries = 0;
+
+cy201_startup_start:
+	if (tries > 10) {
+		pr_err("%s: startup fail max attempts %d", __func__, tries);
+		goto cy201_startup_exit;
+	} else if (tries != 0) {
+		pr_err("%s: startup fail on attempt %d", __func__, tries);
+	}
+
+	tries++;
 
 	retval = cy201_hw_reset(ts);
 	if (retval < 0) {
@@ -1055,27 +1081,36 @@ static int cy201_startup(struct cy201 *ts)
 		if (retval) {
 			pr_err("%s: Error recover chip (step 1) r=%d\n",
 				__func__, retval);
+			if (ts->resuming)
+				goto cy201_startup_start;
 		}
-		/* Assume cy201_startup() is called by resume funciton only */
+		/* Assume cy201_startup() is called by resume function only */
 		retval = cy201_wr_cmd(ts, &cy201_enter_setup,
 			ts->platform_data->addr[0]);
 		if (retval < 0) {
 			pr_err("%s: Error enter setup mode r=%d\n",
 				__func__, retval);
+			if (ts->resuming)
+				goto cy201_startup_start;
 		}
 		retval = cy201_wr_cmd(ts, &cy201_reconfig_to_POR,
 			ts->platform_data->addr[0]);
 		if (retval < 0) {
 			pr_err("%s: Error reconfig to POR r=%d\n",
 				__func__, retval);
+			if (ts->resuming)
+				goto cy201_startup_start;
 		}
 		retval = cy201_hw_rebaseline(ts);
 		if (retval) {
 			pr_err("%s: Error rebaseline chip r=%d\n",
 				__func__, retval);
+			if (ts->resuming)
+				goto cy201_startup_start;
 		}
 	}
 
+cy201_startup_exit:
 	cy201_pr_state(ts);
 	return retval;
 }
@@ -1422,12 +1457,15 @@ int cy201_resume(void *handle)
 	struct cy201 *ts = handle;
 	int retval = 0;
 
+	mutex_lock(&ts->mutex);
+
 	cy201_dbg(ts, CY_DBG_LVL_3, "%s: Resuming...", __func__);
 
-	if (ts->power_state != CY_SLEEP_STATE)
+	ts->resuming = true;
+
+	if (ts->power_state == CY_LDR_STATE)
 		goto cy201_resume_exit;
 
-	mutex_lock(&ts->mutex);
 	if ((ts->platform_data->flags & CY_USE_SLEEP) &&
 		(ts->power_state != CY_ACTIVE_STATE)) {
 		/*
@@ -1442,9 +1480,10 @@ int cy201_resume(void *handle)
 	}
 	cy201_dbg(ts, CY_DBG_LVL_3, "%s: Wake Up %s\n", __func__,
 		(retval < 0) ? "FAIL" : "PASS");
-	mutex_unlock(&ts->mutex);
 
 cy201_resume_exit:
+	ts->resuming = false;
+	mutex_unlock(&ts->mutex);
 	return retval;
 }
 EXPORT_SYMBOL_GPL(cy201_resume);
@@ -1453,6 +1492,8 @@ int cy201_suspend(void *handle)
 {
 	struct cy201 *ts = handle;
 	int retval = 0;
+
+	mutex_lock(&ts->mutex);
 
 	cy201_dbg(ts, CY_DBG_LVL_3, "%s: Suspending...", __func__);
 
@@ -1464,7 +1505,6 @@ int cy201_suspend(void *handle)
 		goto cy201_suspend_exit;
 	}
 
-	mutex_lock(&ts->mutex);
 	if ((ts->platform_data->flags & CY_USE_SLEEP) &&
 		(ts->power_state == CY_ACTIVE_STATE)) {
 		/*
@@ -1475,9 +1515,9 @@ int cy201_suspend(void *handle)
 			pr_err("%s: fail SUSPEND r=%d\n", __func__, retval);
 	}
 	cy201_pr_state(ts);
-	mutex_unlock(&ts->mutex);
 
 cy201_suspend_exit:
+	mutex_unlock(&ts->mutex);
 	return retval;
 }
 EXPORT_SYMBOL_GPL(cy201_suspend);
@@ -1569,6 +1609,7 @@ void *cy201_core_init(struct cy201_bus_ops *bus_ops,
 	ts->ic_grpoffset = 0;
 #endif
 	init_completion(&ts->int_running);
+	ts->resuming = false;
 
 	ts->irq = irq;
 

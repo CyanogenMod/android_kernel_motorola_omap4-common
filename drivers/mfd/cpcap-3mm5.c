@@ -30,6 +30,12 @@
 #include <linux/spi/cpcap-regbits.h>
 #include <linux/spi/spi.h>
 
+#define STM_EN_TEST_PRE          0x090C
+#define STM_EN_TEST_POST         0x0000
+#define STM_CHARGE_PUMP_EN_ST_TEST2      0x0001
+#define STM_CHARGE_PUMP_DIS_ST_TEST2     0x0000
+#define STM_CHARGE_PUMP_ST_TEST2_MASK    0x0001
+
 enum {
 	NO_DEVICE,
 	HEADSET_WITH_MIC,
@@ -97,6 +103,8 @@ static void send_key_event(struct cpcap_3mm5_data *data, unsigned int state)
 static void hs_handler(enum cpcap_irqs irq, void *data)
 {
 	struct cpcap_3mm5_data *data_3mm5 = data;
+	struct cpcap_platform_data *pdata
+		= data_3mm5->cpcap->spi->dev.platform_data;
 	int new_state = NO_DEVICE;
 
 	if (irq != CPCAP_IRQ_HS)
@@ -110,6 +118,19 @@ static void hs_handler(enum cpcap_irqs irq, void *data)
 				   (CPCAP_BIT_MB_ON2 | CPCAP_BIT_PTT_CMP_EN));
 		cpcap_regacc_write(data_3mm5->cpcap, CPCAP_REG_RXOA, 0,
 				   CPCAP_BIT_ST_HS_CP_EN);
+
+		if (pdata->ste_disable_low_freq_limit_hs_charge_pump
+			 && (data_3mm5->cpcap->vendor == CPCAP_VENDOR_ST)) {
+			cpcap_regacc_write(data_3mm5->cpcap, CPCAP_REG_TEST,
+				   STM_EN_TEST_PRE,
+				   0xFFFF);
+			cpcap_regacc_write(data_3mm5->cpcap, CPCAP_REG_ST_TEST2,
+				   STM_CHARGE_PUMP_DIS_ST_TEST2,
+				   STM_CHARGE_PUMP_ST_TEST2_MASK);
+			cpcap_regacc_write(data_3mm5->cpcap, CPCAP_REG_TEST,
+				   STM_EN_TEST_POST,
+				   0xFFFF);
+		}
 		audio_low_power_set(data_3mm5, &data_3mm5->audio_low_pwr_det);
 
 		cpcap_irq_mask(data_3mm5->cpcap, CPCAP_IRQ_MB2);
@@ -121,6 +142,18 @@ static void hs_handler(enum cpcap_irqs irq, void *data)
 		if (data_3mm5->key_state)
 			send_key_event(data_3mm5, 0);
 	} else {
+	    if (pdata->ste_disable_low_freq_limit_hs_charge_pump
+		    && (data_3mm5->cpcap->vendor == CPCAP_VENDOR_ST)) {
+			cpcap_regacc_write(data_3mm5->cpcap, CPCAP_REG_TEST,
+				   STM_EN_TEST_PRE,
+				   0xFFFF);
+			cpcap_regacc_write(data_3mm5->cpcap, CPCAP_REG_ST_TEST2,
+				   STM_CHARGE_PUMP_EN_ST_TEST2,
+				   STM_CHARGE_PUMP_ST_TEST2_MASK);
+			cpcap_regacc_write(data_3mm5->cpcap, CPCAP_REG_TEST,
+				   STM_EN_TEST_POST,
+				   0xFFFF);
+		}
 		cpcap_regacc_write(data_3mm5->cpcap, CPCAP_REG_TXI,
 				   (CPCAP_BIT_MB_ON2 | CPCAP_BIT_PTT_CMP_EN),
 				   (CPCAP_BIT_MB_ON2 | CPCAP_BIT_PTT_CMP_EN));

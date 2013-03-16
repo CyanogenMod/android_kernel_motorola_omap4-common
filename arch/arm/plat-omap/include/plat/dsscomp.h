@@ -2,6 +2,11 @@
 #define _ARCH_ARM_PLAT_OMAP_DSSCOMP_H
 
 #include <video/omapdss.h>
+#include <video/dsscomp.h>
+
+struct dsscomp_platform_data {
+	unsigned int tiler1d_slotsz;
+};
 
 /* queuing operations */
 typedef struct dsscomp_data *dsscomp_t;		/* handle */
@@ -22,4 +27,7 @@ int dsscomp_gralloc_queue(struct dsscomp_setup_dispc_data *d,
 			struct tiler_pa_info **pas,
 			bool early_callback,
 			void (*cb_fn)(void *, int), void *cb_arg);
+
+void dsscomp_set_platform_data(struct dsscomp_platform_data *data);
+
 #endif

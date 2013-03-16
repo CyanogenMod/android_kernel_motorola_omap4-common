@@ -160,6 +160,7 @@
 #define DT_PROP_CPCAP_WIRELESSCHRG "wireless_chrg_capability"
 #define DT_PROP_CPCAP_WHISPER "whisper_capability"
 #define DT_PROP_CPCAP_SPDIFAUDIO "spdif_audio_capability"
+#define DT_PROP_CPCAP_STE_MODE_HS_WORKAROUND "ste_mode_hs_audio_workaround"
 #define DT_PROP_CPCAP_USBHS_EXTPWR "usbhs_ext_power"
 
 #define DT_PATH_PMU			"/System@0/SPI@0/PowerIC@1"

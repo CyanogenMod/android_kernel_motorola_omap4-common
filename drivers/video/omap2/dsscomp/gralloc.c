@@ -4,6 +4,7 @@
 #include <linux/vmalloc.h>
 #include <mach/tiler.h>
 #include <video/dsscomp.h>
+#include <plat/android-display.h>
 #include <plat/dsscomp.h>
 #include "dsscomp.h"
 
@@ -12,16 +13,13 @@
 #endif
 static bool blanked;
 
-#define NUM_TILER1D_SLOTS 2
-#define TILER1D_SLOT_SIZE (16 << 20)
-
 static struct tiler1d_slot {
 	struct list_head q;
 	tiler_blk_handle slot;
 	u32 phys;
 	u32 size;
 	u32 *page_map;
-} slots[NUM_TILER1D_SLOTS];
+} slots[NUM_ANDROID_TILER1D_SLOTS];
 static struct list_head free_slots;
 static struct dsscomp_dev *cdev;
 static DEFINE_MUTEX(mtx);
@@ -439,7 +437,7 @@ skip_map1d:
 		if (r)
 			dev_err(DEV(cdev), "failed to pin %d pages into"
 				" %d-pg slots (%d)\n", slot_used,
-				TILER1D_SLOT_SIZE >> PAGE_SHIFT, r);
+				tiler1d_slot_size(cdev) >> PAGE_SHIFT, r);
 	}
 
 	for (ch = 0; ch < MAX_MANAGERS; ch++) {
@@ -605,18 +603,19 @@ void dsscomp_gralloc_init(struct dsscomp_dev *cdev_)
 
 	if (!free_slots.next) {
 		INIT_LIST_HEAD(&free_slots);
-		for (i = 0; i < NUM_TILER1D_SLOTS; i++) {
+		for (i = 0; i < NUM_ANDROID_TILER1D_SLOTS; i++) {
 			u32 phys;
 			tiler_blk_handle slot =
 				tiler_alloc_block_area(TILFMT_PAGE,
-					TILER1D_SLOT_SIZE, 1, &phys, NULL);
+					tiler1d_slot_size(cdev_), 1, &phys,
+					NULL);
 			if (IS_ERR_OR_NULL(slot)) {
 				pr_err("could not allocate slot");
 				break;
 			}
 			slots[i].slot = slot;
 			slots[i].phys = phys;
-			slots[i].size = TILER1D_SLOT_SIZE >> PAGE_SHIFT;
+			slots[i].size = tiler1d_slot_size(cdev_) >> PAGE_SHIFT;
 			slots[i].page_map = vmalloc(sizeof(*slots[i].page_map) *
 						slots[i].size);
 			if (!slots[i].page_map) {

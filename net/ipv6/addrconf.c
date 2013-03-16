@@ -445,6 +445,10 @@ static struct inet6_dev * ipv6_add_dev(struct net_device *dev)
 	/* Join all-node multicast group */
 	ipv6_dev_mc_inc(dev, &in6addr_linklocal_allnodes);
 
+	/* Join all-router multicast group if forwarding is set */
+	if (ndev->cnf.forwarding && dev && (dev->flags & IFF_MULTICAST))
+		ipv6_dev_mc_inc(dev, &in6addr_linklocal_allrouters);
+
 	return ndev;
 }
 
@@ -668,7 +672,7 @@ ipv6_add_addr(struct inet6_dev *idev, const struct in6_addr *addr, int pfxlen,
 	 * layer address of our nexhop router
 	 */
 
-	if (rt->rt6i_nexthop == NULL)
+	if (dst_get_neighbour_raw(&rt->dst) == NULL)
 		ifa->flags &= ~IFA_F_OPTIMISTIC;
 
 	ifa->idev = idev;
@@ -1733,15 +1737,14 @@ static void addrconf_rs_prd_timer(unsigned long data)
 	struct inet6_ifaddr *ifp = (struct inet6_ifaddr *) data;
 	struct inet6_dev *idev = ifp->idev;
 
+	printk(KERN_DEBUG "%s: RS timer expired.\n", idev->dev->name);
 	read_lock(&idev->lock);
-	if (idev->dead || !(idev->if_flags & IF_READY))
+	if (idev->dead || !(idev->if_flags & IF_READY)) {
+		printk(KERN_ERR "%s: Skip send RS for dead %d, !ready %d\n",
+				idev->dev->name, idev->dead,
+				!(idev->if_flags & IF_READY));
 		goto out;
-
-	if (idev->cnf.forwarding)
-		goto out;
-
-	printk(KERN_DEBUG "%s: sending RS with interval %d\n",
-		idev->dev->name, ifp->idev->cnf.rtr_solicit_interval);
+	}
 
 	ndisc_send_rs(idev->dev, &ifp->addr, &in6addr_linklocal_allrouters);
 	spin_lock_bh(&ifp->lock);
@@ -2896,8 +2899,10 @@ static void addrconf_rs_timer(unsigned long data)
 	if (idev->dead || !(idev->if_flags & IF_READY))
 		goto out;
 
+#if !defined(CONFIG_IPV6_ROUTER_RS_PRD)
 	if (idev->cnf.forwarding)
 		goto out;
+#endif
 
 	/* Announcement received after solicitation was sent */
 	if (idev->if_flags & IF_RA_RCVD)

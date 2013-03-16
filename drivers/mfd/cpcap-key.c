@@ -25,10 +25,35 @@
 #include <linux/spi/spi.h>
 #include <linux/slab.h>
 
+
+/* define to enable reboot on very long key hold */
+#define VERY_LONG_HOLD_REBOOT
+
+#ifdef VERY_LONG_HOLD_REBOOT
+#include <mach/system.h>
+#endif
+
+
 struct cpcap_key_data {
 	struct input_dev *input_dev;
 	struct cpcap_device *cpcap;
+#ifdef VERY_LONG_HOLD_REBOOT
+	struct hrtimer very_longPress_timer;
+#endif
 };
+
+#ifdef VERY_LONG_HOLD_REBOOT
+static enum hrtimer_restart very_longPress_timer_callback(struct hrtimer *timer)
+{
+	arch_reset(0, 0);
+
+	while (1)
+		printk(KERN_ERR "power key pressed IRQ HANDLER (SHUTTING DOWN - forcing reboot)\n");
+
+	return HRTIMER_NORESTART;
+}
+#endif
+
 
 static int __init cpcap_key_probe(struct platform_device *pdev)
 {
@@ -70,6 +95,15 @@ static int __init cpcap_key_probe(struct platform_device *pdev)
 
 	dev_info(&pdev->dev, "CPCAP key device probed\n");
 
+#ifdef VERY_LONG_HOLD_REBOOT
+	hrtimer_init(&(key->very_longPress_timer),
+			CLOCK_MONOTONIC,
+			HRTIMER_MODE_REL);
+
+	(key->very_longPress_timer).function =
+		very_longPress_timer_callback;
+#endif
+
 	return 0;
 
 err1:
@@ -100,6 +134,20 @@ void cpcap_broadcast_key_event(struct cpcap_device *cpcap,
 			dev_info(&cpcap->spi->dev,
 				"Power key press, value = %d\n",
 					value);
+#ifdef VERY_LONG_HOLD_REBOOT
+	if (code == KEY_END) {
+		if (!value) { /* Power key release */
+			hrtimer_cancel(&key->very_longPress_timer);
+		} else if (value == 1) { /* Power key press */
+			struct timespec uptime;
+			do_posix_clock_monotonic_gettime(&uptime);
+			if (uptime.tv_sec > 50) {
+				hrtimer_start(&key->very_longPress_timer,
+					ktime_set(7, 0), HRTIMER_MODE_REL);
+			}
+		}
+	}
+#endif
 		input_report_key(key->input_dev, code, value);
 		input_sync(key->input_dev);
 	}

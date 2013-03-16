@@ -559,6 +559,24 @@ void dispc_runtime_put(void)
 bool dispc_go_busy(enum omap_channel channel)
 {
 	int bit;
+	bool enable_bit, go_bit = false;
+
+	dispc_runtime_get();
+
+	if (channel == OMAP_DSS_CHANNEL_LCD ||
+			channel == OMAP_DSS_CHANNEL_LCD2)
+		bit = 0; /* LCDENABLE */
+	else
+		bit = 1; /* DIGITALENABLE */
+
+	/* if the channel is not enabled, we don't need GO */
+	if (channel == OMAP_DSS_CHANNEL_LCD2)
+		enable_bit = REG_GET(DISPC_CONTROL2, bit, bit) == 1;
+	else
+		enable_bit = REG_GET(DISPC_CONTROL, bit, bit) == 1;
+
+	if (!enable_bit)
+		goto end;
 
 	if (channel == OMAP_DSS_CHANNEL_LCD ||
 			channel == OMAP_DSS_CHANNEL_LCD2)
@@ -567,9 +585,14 @@ bool dispc_go_busy(enum omap_channel channel)
 		bit = 6; /* GODIGIT */
 
 	if (channel == OMAP_DSS_CHANNEL_LCD2)
-		return REG_GET(DISPC_CONTROL2, bit, bit) == 1;
+		go_bit = REG_GET(DISPC_CONTROL2, bit, bit) == 1;
 	else
-		return REG_GET(DISPC_CONTROL, bit, bit) == 1;
+		go_bit = REG_GET(DISPC_CONTROL, bit, bit) == 1;
+
+end:
+	dispc_runtime_put();
+
+	return go_bit;
 }
 
 void dispc_go(enum omap_channel channel)

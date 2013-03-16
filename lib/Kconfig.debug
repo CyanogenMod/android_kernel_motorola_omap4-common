@@ -48,14 +48,6 @@ config FRAME_WARN
 	  Setting it to 0 disables the warning.
 	  Requires gcc 4.4
 
-config MUDFLAP
-	bool "Enable mudflap to check slab write after free"
-	depends on DEBUG_SLAB_LEAK || SLUB_DEBUG_ON
-	help
-	  This uses mudflap which introduced by gcc4 to check slab corruption
-	  which is caused by writing after free.
-	  This is smaller and faster than kmemcheck.
-
 config MAGIC_SYSRQ
 	bool "Magic SysRq key"
 	depends on !UML

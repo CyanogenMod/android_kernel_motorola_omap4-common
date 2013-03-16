@@ -590,77 +590,6 @@ static int omapfb_wait_for_go(struct fb_info *fbi)
 	return r;
 }
 
-#ifdef CONFIG_FB_OMAP2_REG_IOCTL
-static int omapfb_reg_read(struct omap_dss_device *display,
-		struct omapfb_reg_access *reg_read)
-{
-	int r = 0;
-	u8 *buf;
-
-	if (display == NULL)
-		return -ENODEV;
-
-	if (!display->driver->reg_read)
-		return -EINVAL;
-
-	if (!access_ok(VERIFY_WRITE, reg_read->buffer, reg_read->buffer_size))
-		return -EFAULT;
-
-	buf = kmalloc(reg_read->buffer_size, GFP_KERNEL);
-	if (!buf) {
-		DBG("kmalloc failed\n");
-		return -ENOMEM;
-	}
-
-	r = display->driver->reg_read(display, reg_read->address,
-			reg_read->buffer_size, buf,
-			reg_read->use_hs_mode);
-	if ((r == 0) &&	(copy_to_user(reg_read->buffer,
-					buf, reg_read->buffer_size)))
-		r = -EFAULT;
-
-	kfree(buf);
-
-	return r;
-}
-
-static int omapfb_reg_write(struct omap_dss_device *display,
-		struct omapfb_reg_access *reg_write)
-{
-	int r = 0;
-	u8 *buf;
-
-	if (display == NULL)
-		return -ENODEV;
-
-	if (!display->driver->reg_write)
-		return -EINVAL;
-
-	/* +1 for register byte */
-	buf = kmalloc(reg_write->buffer_size + 1, GFP_KERNEL);
-	if (!buf) {
-		DBG("kmalloc failed\n");
-		return -ENOMEM;
-	}
-
-	/* Set the address as the first byte */
-	buf[0] = reg_write->address;
-	if (copy_from_user(&buf[1],
-				reg_write->buffer,
-				reg_write->buffer_size))
-		r = -EFAULT;
-	else
-		r = display->driver->reg_write(display,
-				reg_write->buffer_size + 1, buf,
-				reg_write->use_hs_mode);
-
-	kfree(buf);
-
-	return r;
-}
-#endif /* end of CONFIG_FB_OMAP2_REG_IOCTL check */
-
-
 int omapfb_ioctl(struct fb_info *fbi, unsigned int cmd, unsigned long arg)
 {
 	struct omapfb_info *ofbi = FB2OFB(fbi);
@@ -681,7 +610,6 @@ int omapfb_ioctl(struct fb_info *fbi, unsigned int cmd, unsigned long arg)
 		struct omapfb_vram_info		vram_info;
 		struct omapfb_tearsync_info	tearsync_info;
 		struct omapfb_display_info	display_info;
-		struct omapfb_reg_access        reg_access;
 		u32				crt;
 	} p;
 
@@ -979,33 +907,25 @@ int omapfb_ioctl(struct fb_info *fbi, unsigned int cmd, unsigned long arg)
 		break;
 	}
 
-	case OMAPFB_REG_READ: {
-		DBG("ioctl REG_READ\n");
-		r = -EPERM;
-#ifdef CONFIG_FB_OMAP2_REG_IOCTL
-		if (copy_from_user(&p.reg_access,
-					(void __user *)arg,
-					sizeof(p.reg_access)))
+	case OMAPFB_ENABLEVSYNC:
+		if (get_user(p.crt, (__u32 __user *)arg)) {
 			r = -EFAULT;
-		else
-			r = omapfb_reg_read(display, &p.reg_access);
-#endif
-		break;
-	}
+			break;
+		}
 
-	case OMAPFB_REG_WRITE: {
-		DBG("ioctl REG_WRITE\n");
-		r = -EPERM;
-#ifdef CONFIG_FB_OMAP2_REG_IOCTL
-		if (copy_from_user(&p.reg_access,
-					(void __user *)arg,
-					sizeof(p.reg_access)))
-			r = -EFAULT;
-		else
-			r = omapfb_reg_write(display, &p.reg_access);
-#endif
+		omapfb_lock(fbdev);
+		fbdev->vsync_active = !!p.crt;
+
+		if (display->state == OMAP_DSS_DISPLAY_ACTIVE) {
+			if (p.crt)
+				omapfb_enable_vsync(fbdev, display->channel,
+					true);
+			else
+				omapfb_enable_vsync(fbdev, display->channel,
+					false);
+		}
+		omapfb_unlock(fbdev);
 		break;
-	}
 
 	default:
 		dev_err(fbdev->dev, "Unknown ioctl 0x%x\n", cmd);

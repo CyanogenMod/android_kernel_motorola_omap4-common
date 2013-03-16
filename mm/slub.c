@@ -1818,6 +1818,11 @@ static void *__slab_alloc(struct kmem_cache *s, gfp_t gfpflags, int node,
 	if (unlikely(!node_match(c, node)))
 		goto another_slab;
 
+	/* must check again c->freelist in case of cpu migration or IRQ */
+	object = c->freelist;
+	if (object)
+		goto update_freelist;
+
 	stat(s, ALLOC_REFILL);
 
 load_freelist:
@@ -1827,6 +1832,7 @@ load_freelist:
 	if (kmem_cache_debug(s))
 		goto debug;
 
+update_freelist:
 	c->freelist = get_freepointer(s, object);
 	page->inuse = page->objects;
 	page->freelist = NULL;
@@ -3433,13 +3439,14 @@ struct kmem_cache *kmem_cache_create(const char *name, size_t size,
 		if (kmem_cache_open(s, n,
 				size, align, flags, ctor)) {
 			list_add(&s->list, &slab_caches);
+			up_write(&slub_lock);
 			if (sysfs_slab_add(s)) {
+				down_write(&slub_lock);
 				list_del(&s->list);
 				kfree(n);
 				kfree(s);
 				goto err;
 			}
-			up_write(&slub_lock);
 			return s;
 		}
 		kfree(n);
@@ -4899,31 +4906,3 @@ static int __init slab_proc_init(void)
 }
 module_init(slab_proc_init);
 #endif /* CONFIG_SLABINFO */
-
-#ifdef CONFIG_MUDFLAP
-void slab_check_write(void *ptr, unsigned int sz, const char *location)
-{
-	struct page *page;
-	struct kmem_cache *s;
-	void *obj, *start;
-	unsigned long objnr;
-
-	page = virt_to_head_page(ptr);
-	if (!PageSlab(page))
-		return;
-
-	s = page->slab;
-	start = page_address(page);
-	objnr = (unsigned long)(ptr - start) / s->size;
-	obj = start + s->size * objnr;
-	if (!on_freelist(s, page, obj))
-		return;
-
-	printk(KERN_ERR "ptr: %p, sz: %d, location: %s\n",
-			ptr, sz, location);
-	printk(KERN_ERR "write to freed object, size %d\n",
-			s->size);
-	print_tracking(s, obj);
-	dump_stack();
-}
-#endif

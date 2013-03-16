@@ -1157,8 +1157,6 @@ static void ndisc_router_discovery(struct sk_buff *skb)
 	struct ndisc_options ndopts;
 	int optlen;
 	unsigned int pref = 0;
-	int tmp = 0;
-	char *rawmsg = (char *)skb_transport_header(skb);
 
 	__u8 * opt = (__u8 *)(ra_msg + 1);
 
@@ -1234,10 +1232,6 @@ static void ndisc_router_discovery(struct sk_buff *skb)
 		goto skip_defrtr;
 
 	lifetime = ntohs(ra_msg->icmph.icmp6_rt_lifetime);
-	ND_PRINTK1(KERN_DEBUG "%s: RA HEADER: \n", __func__);
-	for (tmp = 0; tmp < sizeof(struct ra_msg); tmp++)
-		ND_PRINTK1(KERN_DEBUG " %02x ", rawmsg[tmp]);
-	ND_PRINTK1(KERN_DEBUG "\n");
 
 #ifdef CONFIG_IPV6_ROUTER_PREF
 	pref = ra_msg->icmph.icmp6_router_pref;
@@ -1250,7 +1244,7 @@ static void ndisc_router_discovery(struct sk_buff *skb)
 	rt = rt6_get_dflt_router(&ipv6_hdr(skb)->saddr, skb->dev);
 
 	if (rt)
-		neigh = rt->rt6i_nexthop;
+		neigh = dst_get_neighbour(&rt->dst);
 
 	if (rt && lifetime == 0) {
 		neigh_clone(neigh);
@@ -1271,7 +1265,7 @@ static void ndisc_router_discovery(struct sk_buff *skb)
 			return;
 		}
 
-		neigh = rt->rt6i_nexthop;
+		neigh = dst_get_neighbour(&rt->dst);
 		if (neigh == NULL) {
 			ND_PRINTK0(KERN_ERR
 				   "ICMPv6 RA: %s() got default router without neighbour.\n",
@@ -1297,6 +1291,13 @@ static void ndisc_router_discovery(struct sk_buff *skb)
 
 skip_defrtr:
 
+#if defined(CONFIG_IPV6_ROUTER_RS_PRD)
+	/*
+	 * Get router lifetime regardless accept_ra_defrtr is set or not
+	 */
+	if (!in6_dev->cnf.accept_ra_defrtr)
+		lifetime = ntohs(ra_msg->icmph.icmp6_rt_lifetime);
+#endif
 	/*
 	 *	Update Reachable Time and Retrans Timer
 	 */

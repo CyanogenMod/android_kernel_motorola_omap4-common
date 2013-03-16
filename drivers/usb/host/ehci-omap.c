@@ -106,6 +106,31 @@ static void usb_phy_resume_workaround(struct ehci_hcd *ehci)
 	udelay(20);
 }
 
+static void wait_for_local_clock(u64 nsec)
+{
+	u64 start, prev, now;
+
+	start = local_clock();
+	prev = start;
+
+	do {
+		now = local_clock();
+
+		/* Handle local_clock() overflow, the best we can do if the
+		* exact overflow value is unknown is to assume that no time
+		* passed between prev and the overflow value. Then we can
+		* correct nsec and start to account for the time before
+		* the overflow (prev - start).
+		*/
+		if (now < start) {
+			nsec -= prev - start;
+			start = now;
+		}
+		prev = now;
+
+	} while ((now - start) < nsec);
+}
+
 static int omap4_ehci_phy_hub_control(
 	struct usb_hcd	*hcd,
 	u16		typeReq,
@@ -331,13 +356,14 @@ static int omap4_ehci_phy_hub_control(
 			 * - wait 1ms
 			 * - switch back to external clock
 			 */
-			mdelay(4);
+			wait_for_local_clock(4 * 1000 * 1000);
 			temp_reg = omap_readl(L3INIT_HSUSBHOST_CLKCTRL);
 			temp_reg |= 1 << 9;
 			temp_reg &= ~(1 << 25);
 			omap_writel(temp_reg, L3INIT_HSUSBHOST_CLKCTRL);
 
-			mdelay(1);
+			wait_for_local_clock(1 * 1000 * 1000);
+
 			temp_reg &= ~(1 << 9);
 			temp_reg |= 1 << 25;
 			omap_writel(temp_reg, L3INIT_HSUSBHOST_CLKCTRL);
@@ -413,6 +439,23 @@ static int omap4_ehci_update_device_disconnect(
 	return 0;
 }
 
+static struct {
+	int		stopped;
+	int		done;
+} tll_WA_info;
+
+static void tll_WA_func(void *info)
+{
+	tll_WA_info.stopped = 1;
+	dsb();
+	/* this loop does almost nothing,
+	   and expected to not mess with MPCore
+	   (TLBs, caches and write buffer), at least
+	   after the first iteration
+	*/
+	while (!tll_WA_info.done)
+		cpu_relax();
+}
 
 static int omap4_ehci_tll_hub_control(
 	struct usb_hcd	*hcd,
@@ -429,9 +472,10 @@ static int omap4_ehci_tll_hub_control(
 	u32		temp, temp1, status;
 	unsigned long	flags;
 	int		retval = 0;
-	u32		runstop, temp_reg;
-	u32             tll_reg = (u32)OMAP2_L4_IO_ADDRESS(
-					L3INIT_HSUSBTLL_CLKCTRL);
+	u32		runstop, temp_reg, tll_reg;
+	u32		cpu = smp_processor_id();
+
+	tll_reg = (u32)OMAP2_L4_IO_ADDRESS(L3INIT_HSUSBTLL_CLKCTRL);
 
 	spin_lock_irqsave(&ehci->lock, flags);
 	switch (typeReq) {
@@ -504,6 +548,19 @@ static int omap4_ehci_tll_hub_control(
 						"port %d would not halt!\n",
 						wIndex);
 
+				/* If we have another CPU online, force it
+				   to not mess with MPCore */
+				if (cpu_online(cpu ^ 0x1)) {
+					tll_WA_info.stopped = 0;
+					tll_WA_info.done = 0;
+					smp_call_function_single(cpu ^ 0x1,
+						tll_WA_func, NULL, 0);
+					while (!tll_WA_info.stopped)
+						cpu_relax();
+					udelay(1);
+					dsb();
+				}
+
 				temp_reg = __raw_readl(tll_reg);
 				temp_reg &= ~(1 << (wIndex + 8));
 
@@ -515,6 +572,10 @@ static int omap4_ehci_tll_hub_control(
 
 				/* Disable the Channel Optional Fclk */
 				__raw_writel(temp_reg, tll_reg);
+				dmb();
+
+				/*Release other CPU*/
+				tll_WA_info.done = 1;
 				retval = handshake(ehci, status_reg,
 					   PORT_RESUME, 0, 2000 /* 2msec */);
 

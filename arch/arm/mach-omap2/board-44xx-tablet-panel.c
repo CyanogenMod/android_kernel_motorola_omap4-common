@@ -216,11 +216,108 @@ static struct omap_dss_device *tablet_dss_devices[] = {
 	&tablet_hdmi_device,
 };
 
-static struct omap_dss_board_info tablet_dss_data = {
-	.num_devices	= ARRAY_SIZE(tablet_dss_devices),
-	.devices	= tablet_dss_devices,
-	.default_device	= &tablet_lcd_device,
+static struct omap_dss_device *dss_devices_hdmi_default_display[] = {
+	&tablet_hdmi_device,
 };
+
+static struct omap_dss_board_info tablet_dss_data_tc35876x_samhyd_wuxga = {
+	.num_devices	= ARRAY_SIZE(dss_devices_tc35876x_samhyd_wuxga),
+	.devices	= dss_devices_tc35876x_samhyd_wuxga,
+	.default_device = &lcd_tc35876x_samhyd_wuxga,
+};
+
+static struct omap_dss_board_info tablet_dss_data_tc35876x_sharp_lq101k1lyxx = {
+	.num_devices	= ARRAY_SIZE(dss_devices_tc35876x_sharp_lq101k1lyxx),
+	.devices	= dss_devices_tc35876x_sharp_lq101k1lyxx,
+	.default_device = &lcd_tc35876x_sharp_lq101k1lyxx,
+};
+
+
+static struct omap_dss_board_info tablet_dss_data_hdmi_default_display = {
+	.num_devices	= ARRAY_SIZE(dss_devices_hdmi_default_display),
+	.devices	= dss_devices_hdmi_default_display,
+	.default_device	= &tablet_hdmi_device,
+};
+/* Allocate ( 18 + 9 ) MB for TILER1D slot size for WUXGA panel, total of
+ * 54 MB of TILER1D
+ */
+static struct dsscomp_platform_data dsscomp_config_tc35876x_samhyd_wuxga = {
+		.tiler1d_slotsz = (SZ_16M + SZ_2M + SZ_8M + SZ_1M),
+};
+
+static struct dsscomp_platform_data dsscomp_config_hdmi_display = {
+		.tiler1d_slotsz = (SZ_16M + SZ_2M + SZ_8M + SZ_1M),
+};
+
+#ifdef CONFIG_FB_OMAP2_NUM_FBS
+#define OMAPLFB_NUM_DEV CONFIG_FB_OMAP2_NUM_FBS
+#else
+#define OMAPLFB_NUM_DEV 1
+#endif
+
+static struct sgx_omaplfb_config omaplfb_config_tc35876x_samhyd_wuxga[OMAPLFB_NUM_DEV] = {
+	{
+	.vram_buffers = 2,
+	.swap_chain_length = 2,
+	}
+};
+
+static struct sgx_omaplfb_config omaplfb_config_hdmi_default_display[OMAPLFB_NUM_DEV] = {
+	{
+	.vram_buffers = 2,
+	.swap_chain_length = 2,
+	}
+};
+
+static struct sgx_omaplfb_platform_data omaplfb_plat_data_tc35876x_samhyd_wuxga = {
+	.num_configs = OMAPLFB_NUM_DEV,
+	.configs = omaplfb_config_tc35876x_samhyd_wuxga,
+};
+
+static struct sgx_omaplfb_platform_data omaplfb_plat_data_hdmi_default_display = {
+	.num_configs = OMAPLFB_NUM_DEV,
+	.configs = omaplfb_config_hdmi_default_display,
+};
+static struct omap_tablet_panel_data panel_data_tc35876x_samhyd_wuxga = {
+	.board_info = &tablet_dss_data_tc35876x_samhyd_wuxga,
+	.dsscomp_data = &dsscomp_config_tc35876x_samhyd_wuxga,
+	.omaplfb_data = &omaplfb_plat_data_tc35876x_samhyd_wuxga,
+};
+
+static struct omap_tablet_panel_data panel_data_tc35876x_sharp_lq101k1lyxx = {
+	.board_info = &tablet_dss_data_tc35876x_sharp_lq101k1lyxx,
+	.dsscomp_data = NULL,
+	.omaplfb_data = NULL,
+};
+
+static struct omap_tablet_panel_data panel_data_hdmi_default_display  = {
+	.board_info = &tablet_dss_data_hdmi_default_display,
+	.dsscomp_data = &dsscomp_config_hdmi_display,
+	.omaplfb_data = &omaplfb_plat_data_hdmi_default_display,
+};
+
+static struct omap_tablet_panel_data *get_panel_data(enum omap_44xx_tablet_panel_type panel_type)
+{
+
+	if (omap_android_display_is_default(&tablet_hdmi_device)) {
+		return &panel_data_hdmi_default_display;
+	}
+
+	switch (panel_type) {
+	case TC35876x_SAMSUNG_HYDIS_WUXGA: /* HYDIS & Samsung equivalent */
+		return &panel_data_tc35876x_samhyd_wuxga;
+		break;
+	case TC35876x_SHARP_LQ101K1LYxx_WXGA:
+	default:
+		if (omap_is_board_version(OMAP4_TABLET_1_0) ||
+		    omap_is_board_version(OMAP4_TABLET_1_1) ||
+		    omap_is_board_version(OMAP4_TABLET_1_2)) {
+			lcd_tc35876x_sharp_lq101k1lyxx.panel.timings.x_res = 1024;
+			lcd_tc35876x_sharp_lq101k1lyxx.panel.timings.y_res = 768;
+		}
+		return &panel_data_tc35876x_sharp_lq101k1lyxx;
+	}
+}
 
 static void tablet_lcd_init(void)
 {

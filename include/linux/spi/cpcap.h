@@ -318,7 +318,8 @@ enum cpcap_reg {
 	CPCAP_REG_LMACE,	/* LMR Mace IC Support */
 	CPCAP_REG_TEST,         /* Test */
 	CPCAP_REG_ST_TEST1,     /* ST Test1 */
-	CPCAP_REG_END = CPCAP_REG_ST_TEST1, /* End of CPCAP registers. */
+	CPCAP_REG_ST_TEST2,     /* ST Test2 */
+	CPCAP_REG_END = CPCAP_REG_ST_TEST2, /* End of CPCAP registers. */
 
 	CPCAP_REG_MAX		/* The largest valid register value. */
 	= CPCAP_REG_END,
@@ -737,6 +738,7 @@ struct cpcap_platform_data {
 	struct cpcap_ind_chrg *ind_chrg;
 	struct cpcap_usb_mux *usb_mux;
 	struct cpcap_spdif_audio *spdif_audio;
+	bool ste_disable_low_freq_limit_hs_charge_pump;
 	struct cpcap_usbhs_ext_pwr *usbhs_ext_pwr;
 	struct cpcap_factory_kill *factory_kill;
 	struct hdmi_hpd_data *hpd_status;

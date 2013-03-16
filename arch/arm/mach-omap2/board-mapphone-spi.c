@@ -978,6 +978,7 @@ static struct cpcap_platform_data mapphone_cpcap_data = {
 	.ind_chrg = &maphone_ind_chrg,
 	.usb_mux = &mapphone_mux_switch,
 	.spdif_audio = &mapphone_spdif_audio,
+	.ste_disable_low_freq_limit_hs_charge_pump = false,
 	.usbhs_ext_pwr = &mapphone_usbhs_ext_pwr,
 	.factory_kill = &maphone_factory_kill,
 	.hpd_status = &mapphone_hdmi_hpd,
@@ -1296,6 +1297,15 @@ static void __init cpcap_of_init(void)
 		printk(KERN_ERR "Read property %s error!\n",
 				DT_PROP_CPCAP_SPDIFAUDIO);
 	}
+
+	prop = of_get_property(node,
+		DT_PROP_CPCAP_STE_MODE_HS_WORKAROUND, &size);
+	if (prop)
+		mapphone_cpcap_data.ste_disable_low_freq_limit_hs_charge_pump
+				= *(bool *)(prop);
+	else
+		mapphone_cpcap_data.ste_disable_low_freq_limit_hs_charge_pump
+				= false;
 
 	prop = of_get_property(node, DT_PROP_CPCAP_USBHS_EXTPWR, &size);
 	if (prop)

@@ -69,7 +69,7 @@
 #include "board-mapphone.h"
 #include "board-mapphone-sensors.h"
 #include "board-mapphone-padconf.h"
-#include "omap4_ion.h"
+#include <mach/omap4_ion.h>
 #include "mux.h"
 #include "hsmmc.h"
 #include "timer-gp.h"
@@ -1352,6 +1352,15 @@ static void __init mapphone_map_io(void)
 }
 static void __init mapphone_reserve(void)
 {
+	omap_init_ram_size();
+
+#ifdef CONFIG_ION_OMAP
+	mapphone_android_display_setup(get_omap_ion_platform_data());
+	omap_ion_init();
+#else
+	mapphone_android_display_setup(NULL);
+#endif
+
 	omap_ram_console_init(OMAP4_RAMCONSOLE_START,
 			OMAP4_RAMCONSOLE_SIZE);
 
@@ -1367,10 +1376,6 @@ static void __init mapphone_reserve(void)
 	/* ipu needs to recognize secure input buffer area as well */
 	omap_ipu_set_static_mempool(PHYS_ADDR_DUCATI_MEM, PHYS_ADDR_DUCATI_SIZE +
 					OMAP4_ION_HEAP_SECURE_INPUT_SIZE);
-
-#ifdef CONFIG_ION_OMAP
-	omap_ion_init();
-#endif
 
 	omap_reserve();
 }

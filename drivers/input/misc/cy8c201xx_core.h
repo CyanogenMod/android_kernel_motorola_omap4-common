@@ -37,8 +37,8 @@
 #endif
 
 #define CY201_I2C_NAME                 "cy8c201xx"
-#define CY201_DRIVER_VERSION           "Rev1-05M5"
-#define CY201_DRIVER_DATE              "2011-08-31"
+#define CY201_DRIVER_VERSION           "Rev1-05M6"
+#define CY201_DRIVER_DATE              "2012-08-01"
 #define CY201_I2C_ADR_MASK		0x7F
 
 #define CY_NUM_RETRY                26 /* max retries for rd/wr ops */

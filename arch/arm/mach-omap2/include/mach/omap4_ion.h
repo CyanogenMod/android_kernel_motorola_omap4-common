@@ -17,8 +17,6 @@
 #ifndef _OMAP4_ION_H
 #define _OMAP4_ION_H
 
-#define OMAP4_RAMCONSOLE_START	(PLAT_PHYS_OFFSET + SZ_512M)
-#define OMAP4_RAMCONSOLE_SIZE	SZ_2M
 #include <linux/ion.h>
 
 #define OMAP4_RAM_SIZE (omap_total_ram_size())

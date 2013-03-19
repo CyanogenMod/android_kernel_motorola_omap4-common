@@ -174,14 +174,6 @@ void __init omap_ion_init(void)
 					h->base, h->base + h->size, h->size);
 	}
 
-#ifndef CONFIG_OMAP_RAM_CONSOLE
-	/* XXX this appears to be extraneous; need to follow up with TI */
-	memblock_remove(OMAP4_RAMCONSOLE_START, OMAP4_RAMCONSOLE_SIZE);
-	pr_debug("%s: RAMCONSOLE size=%dMB, addr=0x%x\n",
-		__func__, (OMAP4_RAMCONSOLE_SIZE >> 20),
-		(unsigned int)OMAP4_RAMCONSOLE_START);
-#endif
-
 	for (i = 0; i < omap4_ion_data.nr; i++)
 		if (omap4_ion_data.heaps[i].type == ION_HEAP_TYPE_CARVEOUT ||
 		    omap4_ion_data.heaps[i].type == OMAP_ION_HEAP_TYPE_TILER) {

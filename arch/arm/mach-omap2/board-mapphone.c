@@ -1292,8 +1292,8 @@ static void __init mapphone_init(void)
 #ifdef CONFIG_EMU_UART_DEBUG
 	/* emu-uart function will override devtree iomux setting */
 	activate_emu_uart();
-//#else
-//	deactivate_emu_uart();
+#else
+	deactivate_emu_uart();
 #endif
 
 	omap4_register_ion();

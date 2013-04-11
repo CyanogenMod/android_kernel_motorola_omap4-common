@@ -6338,9 +6338,9 @@ static __initdata struct omap_hwmod *omap44xx_hwmods[] = {
 	/* uart class */
 	&omap44xx_uart1_hwmod,
 	&omap44xx_uart2_hwmod,
-#ifdef CONFIG_EMU_UART_DEBUG
+#ifndef CONFIG_EMU_UART_DEBUG
 	//TODO: just to prevent debug_ll from dying
-	&omap44xx_uart3_hwmod,
+	//&omap44xx_uart3_hwmod,
 #endif
 	&omap44xx_uart4_hwmod,
 

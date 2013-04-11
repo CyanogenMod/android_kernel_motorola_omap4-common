@@ -1361,8 +1361,12 @@ static void __init mapphone_reserve(void)
 	mapphone_android_display_setup(NULL);
 #endif
 
-	omap_ram_console_init(OMAP_RAM_CONSOLE_START_DEFAULT,
-			OMAP_RAM_CONSOLE_SIZE_DEFAULT);
+	if (omap_total_ram_size() <= SZ_512M)
+		omap_ram_console_init(OMAP_RAM_CONSOLE_START_DEFAULT,
+				OMAP_RAM_CONSOLE_SIZE_DEFAULT);
+	else
+		omap_ram_console_init(OMAP_RAM_CONSOLE_1GB_START_DEFAULT,
+				OMAP_RAM_CONSOLE_1GB_SIZE_DEFAULT);
 
 	/* do the static reservations first */
 	memblock_remove(PHYS_ADDR_SMC_MEM, PHYS_ADDR_SMC_SIZE);

@@ -46,6 +46,8 @@
 #include <plat/serial.h>
 #include <plat/omap-pm.h>
 
+#include <plat/common.h>
+
 #define UART_OMAP_IIR_ID		0x3e
 #define UART_OMAP_IIR_RX_TIMEOUT	0xc
 #define PADCONF_SAFEMODE		0x7
@@ -1668,6 +1670,12 @@ static int serial_omap_probe(struct platform_device *pdev)
 	printk("Enabling uart clocks\n");
 	od = to_omap_device(up->pdev);
 	omap_hwmod_enable_clocks(od->hwmods[0]);
+#else
+	if (omap_total_ram_size() == SZ_512M) {
+		printk("Enabling uart clocks\n");
+		od = to_omap_device(up->pdev);
+		omap_hwmod_enable_clocks(od->hwmods[0]);
+	}
 #endif
 
 	if (!up->port.membase) {

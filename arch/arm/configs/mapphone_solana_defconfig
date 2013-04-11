@@ -449,7 +449,7 @@ CONFIG_ARM_FLUSH_CONSOLE_ON_RESTART=y
 CONFIG_USE_OF=y
 CONFIG_ZBOOT_ROM_TEXT=0
 CONFIG_ZBOOT_ROM_BSS=0
-CONFIG_CMDLINE="root=/dev/ram0 rw mem=1023M@0x80000000 console=null vram=10300K omapfb.vram=0:8256K,1:4K,2:2040K init=/init ip=off mmcparts=mmcblk1:p7(pds),p15(boot),p16(recovery),p17(cdrom),p18(misc),p19(cid),p20(kpanic),p21(system),p22(cache),p23(preinstall),p24(webtop),p25(userdata),p26(emstorage) mot_sst=1 androidboot.bootloader=0x0A72"
+CONFIG_CMDLINE="root=/dev/ram0 rw mem=512M@0x80000000 console=null vram=10300K omapfb.vram=0:8256K,1:4K,2:2040K init=/init ip=off mmcparts=mmcblk1:p7(pds),p15(boot),p16(recovery),p17(cdrom),p18(misc),p19(cid),p20(kpanic),p21(system),p22(cache),p23(preinstall),p24(userdata),p25(emstorage) mot_sst=1 androidboot.bootloader=0x0A64"
 # CONFIG_CMDLINE_FROM_BOOTLOADER is not set
 CONFIG_CMDLINE_EXTEND=y
 # CONFIG_CMDLINE_FORCE is not set
@@ -3022,11 +3022,7 @@ CONFIG_KEYS_DEBUG_PROC_KEYS=y
 # CONFIG_SECURITY_DMESG_RESTRICT is not set
 # CONFIG_SECURITY is not set
 # CONFIG_SECURITYFS is not set
-CONFIG_TF_ZEBRA=y
-CONFIG_SECURITY_MIDDLEWARE_COMPONENT=y
-# CONFIG_SMC_KERNEL_CRYPTO is not set
-CONFIG_SECURE_TRACE=y
-# CONFIG_TF_DRIVER_DEBUG_SUPPORT is not set
+# CONFIG_SECURITY_MIDDLEWARE_COMPONENT is not set
 CONFIG_DEFAULT_SECURITY_DAC=y
 CONFIG_DEFAULT_SECURITY=""
 CONFIG_CRYPTO=y

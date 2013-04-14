@@ -778,11 +778,9 @@ static void modem_close(struct usb_serial_port *port)
 	}
 
 	stop_data_traffic(modem_port_ptr);
-	tasklet_disable(&modem_port_ptr->urb_task);
 	cancel_work_sync(&modem_port_ptr->wake_and_write);
 	modem_port_ptr->port = 0;
 	modem_port_ptr->modem_status = 0;
-	tasklet_enable(&modem_port_ptr->urb_task);
 	if (modem_port_ptr->delayed_wb)
 		modem_port_ptr->delayed_wb->use = 0;
 

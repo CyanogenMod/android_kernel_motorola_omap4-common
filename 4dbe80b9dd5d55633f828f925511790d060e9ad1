@@ -1,0 +1,8 @@
+Change-Id: I4dbe80b9dd5d55633f828f925511790d060e9ad1
+Code-Review+2: David Hacker <davidhackerdvm@gmail.com>
+Verified+1: David Hacker <davidhackerdvm@gmail.com>
+Submitted-by: David Hacker <davidhackerdvm@gmail.com>
+Submitted-at: Tue, 16 Apr 2013 00:23:33 -0700
+Reviewed-on: http://review.cyanogenmod.org/35901
+Project: CyanogenMod/android_kernel_motorola_omap4-common
+Branch: refs/heads/cm-10.1

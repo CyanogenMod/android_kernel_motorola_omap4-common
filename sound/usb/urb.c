@@ -70,19 +70,10 @@ static int deactivate_urbs(struct snd_usb_substream *subs, int force, int can_sl
 		if (test_bit(i, &subs->active_mask)) {
 			if (!test_and_set_bit(i, &subs->unlink_mask)) {
 				struct urb *u = subs->dataurb[i].urb;
-				/*
-				 * don't unlink submitted urbs, it is ok
-				 * to let them go through and play. Or it
-				 * confuses musb driver. submitted urbs
-				 * can be finished by usb transfer or
-				 * usb_disconnect()
-				 */
-#ifndef CONFIG_USB_MUSB_HDRC
-				if (async) {
+				if (async)
 					usb_unlink_urb(u);
-				} else
+				else
 					usb_kill_urb(u);
-#endif
 			}
 		}
 	}
@@ -91,19 +82,10 @@ static int deactivate_urbs(struct snd_usb_substream *subs, int force, int can_sl
 			if (test_bit(i+16, &subs->active_mask)) {
 				if (!test_and_set_bit(i+16, &subs->unlink_mask)) {
 					struct urb *u = subs->syncurb[i].urb;
-					/*
-					 * don't unlink submitted urbs, it is ok
-					 * to let them go through and play.Or it
-					 * confuses musb driver. submitted urbs
-					 * can be finished by usb transfer or
-					 * usb_disconnect()
-					 */
-#ifndef CONFIG_USB_MUSB_HDRC
-					if (async) {
+					if (async)
 						usb_unlink_urb(u);
-					} else
+					else
 						usb_kill_urb(u);
-#endif
 				}
 			}
 		}
@@ -183,24 +165,10 @@ void snd_usb_release_substream_urbs(struct snd_usb_substream *subs, int force)
  */
 static void snd_complete_urb(struct urb *urb)
 {
-	struct snd_urb_ctx *ctx = NULL;
-	struct snd_usb_substream *subs = NULL;
-	struct snd_pcm_substream *substream = NULL;
+	struct snd_urb_ctx *ctx = urb->context;
+	struct snd_usb_substream *subs = ctx->subs;
+	struct snd_pcm_substream *substream = ctx->subs->pcm_substream;
 	int err = 0;
-
-	if (urb == NULL) {
-		WARN(1, "FATAL ERR, URB is  NULL");
-		return;
-	} else if (urb->dev == NULL ||
-		 ((urb->dev)->state == USB_STATE_NOTATTACHED)) {
-		WARN(1, "FATAL ERR ,usb state is disconnected");
-		return;
-	}
-
-	ctx = urb->context;
-	subs = ctx->subs;
-	substream = ctx->subs->pcm_substream;
-
 
 	if ((subs->running && subs->ops.retire(subs, substream->runtime, urb)) ||
 	    !subs->running || /* can be stopped during retire callback */

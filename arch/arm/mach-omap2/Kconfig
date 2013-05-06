@@ -387,6 +387,10 @@ config MACH_MAPPHONE
 	select OMAP_REBOOT_REASON
 	select OMAP_RAM_CONSOLE
 
+config MACH_MAPPHONE_SOLANA
+	bool "Droid 3 Support (XT862/XT860/XT883)"
+	depends on MACH_MAPPHONE
+
 config EMU_UART_DEBUG
 	bool "Setting MiniUSB port as UART3 to debug kernel"
 	default n

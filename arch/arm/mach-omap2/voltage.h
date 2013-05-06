@@ -221,7 +221,7 @@ struct omap_voltdm_pmic {
 	u8 vp_vstepmax;
 	u32 vp_vddmin;
 	u32 vp_vddmax;
-	u8 vp_timeout_us;
+	u16 vp_timeout_us;
 	u16 i2c_slave_addr;
 	u16 volt_reg_addr;
 	u16 cmd_reg_addr;

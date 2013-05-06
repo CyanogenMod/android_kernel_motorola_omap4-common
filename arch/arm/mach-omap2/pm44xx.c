@@ -760,6 +760,9 @@ static int omap4_pm_suspend(void)
 	omap4_enter_sleep(0, PWRDM_POWER_OFF, true);
 	omap4_print_wakeirq();
 	prcmdebug_dump(PRCMDEBUG_LASTSLEEP);
+#ifdef CONFIG_PM_DEBUG
+	regulator_show_state_noirq(enable_regulator_dump);
+#endif
 
 	/* Disable Device OFF state*/
 	if (off_mode_enabled)

@@ -90,9 +90,11 @@ static int rpres_fdif_shutdown(struct platform_device *pdev)
 
 static int rpres_scale_dev(struct platform_device *pdev, long val)
 {
+#ifndef CONFIG_MEDIA_OMAP_DCE
 	if (&pdev->dev == omap2_get_mpuss_device())
 		return omap_cpufreq_scale(&pdev->dev, val/1000);
 	else
+#endif
 		return omap_device_scale(&pdev->dev, &pdev->dev, val);
 }
 

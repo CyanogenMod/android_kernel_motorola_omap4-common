@@ -557,9 +557,11 @@ static int omap_rproc_set_l3_bw(struct rproc *rproc, long val)
 
 static int omap_rproc_scale(struct rproc *rproc, long val)
 {
+#ifndef CONFIG_MEDIA_OMAP_DCE
 	if (rproc->dev == omap2_get_mpuss_device())
 		return omap_cpufreq_scale(rproc->dev, val/1000);
 	else
+#endif
 		return omap_device_scale(rproc->dev, rproc->dev, val);
 }
 

@@ -111,7 +111,7 @@ static LIST_HEAD(rpmsg_omx_services_list);
  */
 #define TILER_START	0x60000000
 #define TILER_END	0x80000000
-#ifdef CONFIG_MEDIA_OMAP_DCE
+#ifdef CONFIG_VIDEO_OMAP_DCE
 #define ION_1D_START	0x82700000
 #define ION_1D_END	0x99700000
 #define ION_1D_VA	0x88000000
@@ -816,7 +816,7 @@ static void rpmsg_omx_driver_cb(struct rpmsg_channel *rpdev, void *data,
 }
 
 static struct rpmsg_device_id rpmsg_omx_id_table[] = {
-#ifdef CONFIG_MEDIA_OMAP_DCE
+#ifdef CONFIG_VIDEO_OMAP_DCE
 	{ .name	= "rpmsg-omx0" }, /* ipu_c0 */
 	{ .name	= "rpmsg-omx1" }, /* ipu_c1 */
 	{ .name	= "rpmsg-omx2" }, /* dsp */

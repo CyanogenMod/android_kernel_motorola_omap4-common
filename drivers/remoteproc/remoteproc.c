@@ -754,7 +754,7 @@ static int rproc_add_mem_entry(struct rproc *rproc, struct fw_resource *rsc)
 		 * carveouts we don't care about in a core dump.
 		 * Perhaps the ION carveout should be reported as RSC_DEVMEM.
 		 */
-#ifdef CONFIG_MEDIA_OMAP_DCE
+#ifdef CONFIG_VIDEO_OMAP_DCE
 		me->core = (rsc->type == RSC_CARVEOUT && rsc->pa != 0x80000000);
 #else
 		me->core = (rsc->type == RSC_CARVEOUT && rsc->pa != 0xbe900000);
@@ -881,7 +881,7 @@ static int rproc_handle_resources(struct rproc *rproc, struct fw_resource *rsc,
 				}
 				rsc->pa = pa;
 			} else {
-#ifdef CONFIG_MEDIA_OMAP_DCE
+#ifdef CONFIG_VIDEO_OMAP_DCE
 				if (strcmp(rsc->name, "IPU_MEM_IOBUFS") != 0)
 #endif
 				ret = rproc_check_poolmem(rproc, rsc->len, pa);

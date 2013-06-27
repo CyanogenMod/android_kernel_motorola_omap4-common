@@ -377,19 +377,24 @@ err_idle:
 
 static void _destroy_pm_flags(struct rproc *rproc)
 {
-	struct omap_rproc_priv *rpp = rproc->priv;
+	struct omap_rproc_priv *rpp;
 
-	if (rpp->mbox) {
-		omap_mbox_put(rpp->mbox, NULL);
-		rpp->mbox = NULL;
-	}
-	if (rpp->idle) {
-		iounmap(rpp->idle);
-		rpp->idle = NULL;
-	}
-	if (rpp->suspend) {
-		iounmap(rpp->suspend);
-		rpp->suspend = NULL;
+	if (rproc) {
+		rpp = rproc->priv;
+		if (rpp) {
+			if (rpp->mbox) {
+				omap_mbox_put(rpp->mbox, NULL);
+				rpp->mbox = NULL;
+			}
+			if (rpp->idle) {
+				iounmap(rpp->idle);
+				rpp->idle = NULL;
+			}
+			if (rpp->suspend) {
+				iounmap(rpp->suspend);
+				rpp->suspend = NULL;
+			}
+		}
 	}
 }
 #endif

@@ -6339,8 +6339,8 @@ static __initdata struct omap_hwmod *omap44xx_hwmods[] = {
 	&omap44xx_uart1_hwmod,
 	&omap44xx_uart2_hwmod,
 #ifndef CONFIG_EMU_UART_DEBUG
-	//TODO: just to prevent debug_ll from dying
-	//&omap44xx_uart3_hwmod,
+	//FIXME-HASH: If EMU_UART we should not call this to prevent debug_ll from dying
+	&omap44xx_uart3_hwmod,
 #endif
 	&omap44xx_uart4_hwmod,
 

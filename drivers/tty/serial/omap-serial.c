@@ -1667,12 +1667,8 @@ static int serial_omap_probe(struct platform_device *pdev)
 	up->port.membase = ioremap(mem->start, mem->end - mem->start);
 
 #ifdef CONFIG_EMU_UART_DEBUG
-	printk("Enabling uart clocks\n");
-	od = to_omap_device(up->pdev);
-	omap_hwmod_enable_clocks(od->hwmods[0]);
-#else
-	if (omap_total_ram_size() == SZ_512M) {
-		printk("Enabling uart clocks\n");
+	if (pdev->id == 2) {
+		printk("EMU_UART Enabled: Enabling UART.2 clock\n");
 		od = to_omap_device(up->pdev);
 		omap_hwmod_enable_clocks(od->hwmods[0]);
 	}

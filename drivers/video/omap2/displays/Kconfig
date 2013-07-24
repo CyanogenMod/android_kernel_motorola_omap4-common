@@ -54,6 +54,14 @@ config PANEL_MAPPHONE
 	help
 	  LCD Panel used in Mapphone
 
+config PANEL_MAPPHONE_SKIP_FIRSTBOOT
+	bool "Dont use first_boot logic (Edison)"
+        depends on PANEL_MAPPHONE
+	help
+	  Mapphone panel has some first_boot logic that can
+	  break some devices (Edison), enable this to skip
+	  that logic.
+
 config PANEL_MAPPHONE_OMAP4_HDTV
 	tristate "Mapphone OMAP4 HDTV Panel"
 	help

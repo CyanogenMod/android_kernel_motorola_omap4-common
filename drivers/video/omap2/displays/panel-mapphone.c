@@ -3778,7 +3778,11 @@ static void set_default_panel_init_state(struct omap_dss_device *dssdev)
 }
 static int mapphone_panel_power_on(struct omap_dss_device *dssdev)
 {
+#ifdef CONFIG_PANEL_MAPPHONE_SKIP_FIRSTBOOT
+	static bool first_boot = false;
+#else
 	static bool first_boot = true;
+#endif
 	struct mapphone_data *mp_data = dev_get_drvdata(&dssdev->dev);
 	int ret;
 	u8 power_mode = 0;

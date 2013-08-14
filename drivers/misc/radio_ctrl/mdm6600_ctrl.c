@@ -491,6 +491,9 @@ static int __devinit mdm6600_ctrl_probe(struct platform_device *pdev)
 	}
 
 	mdm_ctrl.pdata->bootmode = BOOTMODE_NORMAL;
+#ifdef CONFIG_MACH_MAPPHONE_SOLANA
+	mdm_ctrl_powerup();
+#endif
 	update_bp_status();
 	register_reboot_notifier(&mdm6600_reboot_notifier);
 

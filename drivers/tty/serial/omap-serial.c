@@ -1661,12 +1661,17 @@ static int serial_omap_probe(struct platform_device *pdev)
 	up->port.mapbase = mem->start;
 	up->port.membase = ioremap(mem->start, mem->end - mem->start);
 
+#ifdef CONFIG_MACH_MAPPHONE_SOLANA
+		od = to_omap_device(up->pdev);
+		omap_hwmod_enable_clocks(od->hwmods[0]);
+#else
 #ifdef CONFIG_EMU_UART_DEBUG
 	if (pdev->id == 2) {
 		printk("EMU_UART Enabled: Enabling UART.2 clock\n");
 		od = to_omap_device(up->pdev);
 		omap_hwmod_enable_clocks(od->hwmods[0]);
 	}
+#endif
 #endif
 
 	if (!up->port.membase) {

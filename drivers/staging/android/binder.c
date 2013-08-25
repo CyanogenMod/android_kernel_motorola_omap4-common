@@ -3,7 +3,7 @@
  * Android IPC Subsystem
  *
  * Copyright (C) 2007-2008 Google, Inc.
- * Copyright (c) 2012, Code Aurora Forum. All rights reserved.
+ * Copyright (c) 2012, The Linux Foundation. All rights reserved.
  * Copyright (c) 2012, Motorola Mobility, Inc.
  *
  * This software is licensed under the terms of the GNU General Public

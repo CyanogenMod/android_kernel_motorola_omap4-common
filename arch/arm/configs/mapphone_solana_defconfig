@@ -1,4 +1,4 @@
 CONFIG_MACH_MAPPHONE_SOLANA=y
-CONFIG_CMDLINE="root=/dev/ram0 rw mem=512M@0x80000000 console=null vram=10300K omapfb.vram=0:8256K,1:4K,2:2040K init=/init ip=off mmcparts=mmcblk1:p7(pds),p15(boot),p16(recovery),p17(cdrom),p18(misc),p19(cid),p20(kpanic),p21(system),p22(cache),p23(preinstall),p24(userdata),p25(emstorage) mot_sst=1 androidboot.bootloader=0x0A64"
+CONFIG_CMDLINE="root=/dev/ram0 rw mem=512M@0x80000000 console=null vram=10300K omapfb.vram=0:8256K,1:4K,2:2040K init=/init ip=off mmcparts=mmcblk1:p7(pds),p15(boot),p16(recovery),p17(cdrom),p18(misc),p19(cid),p20(kpanic),p21(system),p22(cache),p23(preinstall),p24(userdata),p25(emstorage) mot_sst=1 androidboot.bootloader=0x0A64 androidboot.selinux=permissive"
 CONFIG_VIDEO_OMAP_DCE=y
 # CONFIG_SECURITY_MIDDLEWARE_COMPONENT is not set

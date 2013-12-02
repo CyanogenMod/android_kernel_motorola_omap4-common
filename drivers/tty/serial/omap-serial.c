@@ -668,15 +668,8 @@ static int serial_omap_startup(struct uart_port *port)
 {
 	struct uart_omap_port *up = (struct uart_omap_port *)port;
 	unsigned long flags = 0;
-	int retval;
 
-	/*
-	 * Allocate the IRQ
-	 */
-	retval = request_irq(up->port.irq, serial_omap_irq, up->port.irqflags,
-				up->name, up);
-	if (retval)
-		return retval;
+	enable_irq(up->port.irq); 
 
 	dev_dbg(up->port.dev, "serial_omap_startup+%d\n", up->pdev->id);
 
@@ -807,7 +800,7 @@ static void serial_omap_shutdown(struct uart_port *port)
 		up->uart_dma.rx_buf = NULL;
 	}
 	serial_omap_port_disable(up);
-	free_irq(up->port.irq, up);
+	disable_irq(up->port.irq); 
 }
 
 static inline void
@@ -1386,6 +1379,7 @@ static int serial_omap_suspend(struct device *dev)
 	u8 lcr, efr;
 
 	if (up) {
+		disable_irq(up->port.irq);
 		if (up->rts_mux_driver_control) {
 			up->rts_pullup_in_suspend = 1;
 			omap_uart_enable_rtspullup(up);
@@ -1455,6 +1449,7 @@ static int serial_omap_resume(struct device *dev)
 	if (up) {
 		uart_resume_port(&serial_omap_reg, &up->port);
 		up->suspended = false;
+		enable_irq(up->port.irq);
 
 		if (omap_uart_is_wakeup_src(up)) {
 			serial_omap_port_enable(up);
@@ -1637,13 +1632,13 @@ static int serial_omap_probe(struct platform_device *pdev)
 	dma_rx = platform_get_resource_byname(pdev, IORESOURCE_DMA, "rx");
 	if (!dma_rx) {
 		ret = -EINVAL;
-		goto err;
+		goto do_release_region; 
 	}
 
 	dma_tx = platform_get_resource_byname(pdev, IORESOURCE_DMA, "tx");
 	if (!dma_tx) {
 		ret = -EINVAL;
-		goto err;
+		goto do_release_region; 
 	}
 
 	up = kzalloc(sizeof(*up), GFP_KERNEL);
@@ -1677,7 +1672,7 @@ static int serial_omap_probe(struct platform_device *pdev)
 	if (!up->port.membase) {
 		dev_err(&pdev->dev, "can't ioremap UART\n");
 		ret = -ENOMEM;
-		goto err1;
+		goto do_free; 
 	}
 
 	up->port.flags = omap_up_info->flags;
@@ -1740,9 +1735,15 @@ static int serial_omap_probe(struct platform_device *pdev)
 	ui[pdev->id] = up;
 	serial_omap_add_console_port(up);
 
+	ret = request_irq(up->port.irq, serial_omap_irq, up->port.irqflags,
+	      up->name, up);
+	  if (ret)
+	    goto do_iounmap;
+	  disable_irq(up->port.irq);
+
 	ret = uart_add_one_port(&serial_omap_reg, &up->port);
 	if (ret != 0)
-		goto err1;
+		goto do_free_irq; 
 
 	dev_set_drvdata(&pdev->dev, up);
 	platform_set_drvdata(pdev, up);
@@ -1751,13 +1752,17 @@ static int serial_omap_probe(struct platform_device *pdev)
 		omap_up_info->board_uart_probe(up);
 
 	return 0;
-err:
-	dev_err(&pdev->dev, "[UART%d]: failure [%s]: %d\n",
-				pdev->id, __func__, ret);
-err1:
+
+do_free_irq:
+	free_irq(up->port.irq, up);
+do_iounmap:
+	iounmap(up->port.membase);
+do_free:
 	kfree(up);
 do_release_region:
 	release_mem_region(mem->start, (mem->end - mem->start) + 1);
+	  dev_err(&pdev->dev, "[UART%d]: failure [%s]: %d\n",
+	        pdev->id, __func__, ret); 
 	return ret;
 }
 
@@ -1770,11 +1775,13 @@ static int serial_omap_remove(struct platform_device *dev)
 		struct omap_uart_port_info *info = up->pdev->dev.platform_data;
 
 		pm_runtime_disable(&up->pdev->dev);
+		free_irq(up->port.irq, up); 
 
 		if (info->board_uart_remove)
 			info->board_uart_remove(up);
 
 		uart_remove_one_port(&serial_omap_reg, &up->port);
+		iounmap(up->port.membase); 
 		kfree(up);
 	}
 	return 0;

@@ -153,10 +153,6 @@ static void addrconf_dad_timer(unsigned long data);
 static void addrconf_dad_completed(struct inet6_ifaddr *ifp);
 static void addrconf_dad_run(struct inet6_dev *idev);
 static void addrconf_rs_timer(unsigned long data);
-#if defined(CONFIG_IPV6_ROUTER_RS_PRD)
-static void addrconf_rs_prd_timer(unsigned long data);
-static void addrconf_router_lifetime(int r_lifetime, struct inet6_ifaddr *ifp);
-#endif
 static void __ipv6_ifa_notify(int event, struct inet6_ifaddr *ifa);
 static void ipv6_ifa_notify(int event, struct inet6_ifaddr *ifa);
 
@@ -264,9 +260,6 @@ enum addrconf_timer_t {
 	AC_NONE,
 	AC_DAD,
 	AC_RS,
-#if defined(CONFIG_IPV6_ROUTER_RS_PRD)
-	AC_RS_PRD,
-#endif
 };
 
 static void addrconf_mod_timer(struct inet6_ifaddr *ifp,
@@ -283,11 +276,6 @@ static void addrconf_mod_timer(struct inet6_ifaddr *ifp,
 	case AC_RS:
 		ifp->timer.function = addrconf_rs_timer;
 		break;
-#if defined(CONFIG_IPV6_ROUTER_RS_PRD)
-	case AC_RS_PRD:
-		ifp->timer.function = addrconf_rs_prd_timer;
-		break;
-#endif
 	default:
 		break;
 	}
@@ -445,6 +433,10 @@ static struct inet6_dev * ipv6_add_dev(struct net_device *dev)
 	/* Join all-node multicast group */
 	ipv6_dev_mc_inc(dev, &in6addr_linklocal_allnodes);
 
+	/* Join all-router multicast group if forwarding is set */
+	if (ndev->cnf.forwarding && dev && (dev->flags & IFF_MULTICAST))
+		ipv6_dev_mc_inc(dev, &in6addr_linklocal_allrouters);
+
 	return ndev;
 }
 
@@ -500,8 +492,7 @@ static void addrconf_forward_change(struct net *net, __s32 newf)
 	struct net_device *dev;
 	struct inet6_dev *idev;
 
-	rcu_read_lock();
-	for_each_netdev_rcu(net, dev) {
+	for_each_netdev(net, dev) {
 		idev = __in6_dev_get(dev);
 		if (idev) {
 			int changed = (!idev->cnf.forwarding) ^ (!newf);
@@ -510,7 +501,6 @@ static void addrconf_forward_change(struct net *net, __s32 newf)
 				dev_forward_change(idev);
 		}
 	}
-	rcu_read_unlock();
 }
 
 static int addrconf_fixup_forwarding(struct ctl_table *table, int *p, int old)
@@ -922,12 +912,10 @@ retry:
 	if (ifp->flags & IFA_F_OPTIMISTIC)
 		addr_flags |= IFA_F_OPTIMISTIC;
 
-	ift = !max_addresses ||
-	      ipv6_count_addresses(idev) < max_addresses ?
-		ipv6_add_addr(idev, &addr, tmp_plen,
-			      ipv6_addr_type(&addr)&IPV6_ADDR_SCOPE_MASK,
-			      addr_flags) : NULL;
-	if (!ift || IS_ERR(ift)) {
+	ift = ipv6_add_addr(idev, &addr, tmp_plen,
+			    ipv6_addr_type(&addr)&IPV6_ADDR_SCOPE_MASK,
+			    addr_flags);
+	if (IS_ERR(ift)) {
 		in6_ifa_put(ifp);
 		in6_dev_put(idev);
 		printk(KERN_INFO
@@ -1245,6 +1233,23 @@ try_nextdev:
 }
 EXPORT_SYMBOL(ipv6_dev_get_saddr);
 
+int __ipv6_get_lladdr(struct inet6_dev *idev, struct in6_addr *addr,
+		      unsigned char banned_flags)
+{
+	struct inet6_ifaddr *ifp;
+	int err = -EADDRNOTAVAIL;
+
+	list_for_each_entry(ifp, &idev->addr_list, if_list) {
+		if (ifp->scope == IFA_LINK &&
+		    !(ifp->flags & banned_flags)) {
+			ipv6_addr_copy(addr, &ifp->addr);
+			err = 0;
+			break;
+		}
+	}
+	return err;
+}
+
 int ipv6_get_lladdr(struct net_device *dev, struct in6_addr *addr,
 		    unsigned char banned_flags)
 {
@@ -1254,17 +1259,8 @@ int ipv6_get_lladdr(struct net_device *dev, struct in6_addr *addr,
 	rcu_read_lock();
 	idev = __in6_dev_get(dev);
 	if (idev) {
-		struct inet6_ifaddr *ifp;
-
 		read_lock_bh(&idev->lock);
-		list_for_each_entry(ifp, &idev->addr_list, if_list) {
-			if (ifp->scope == IFA_LINK &&
-			    !(ifp->flags & banned_flags)) {
-				ipv6_addr_copy(addr, &ifp->addr);
-				err = 0;
-				break;
-			}
-		}
+		err = __ipv6_get_lladdr(idev, addr, banned_flags);
 		read_unlock_bh(&idev->lock);
 	}
 	rcu_read_unlock();
@@ -1584,14 +1580,6 @@ static int ipv6_generate_eui64(u8 *eui, struct net_device *dev)
 		return addrconf_ifid_infiniband(eui, dev);
 	case ARPHRD_SIT:
 		return addrconf_ifid_sit(eui, dev);
-	case ARPHRD_RAWIP: {
-		struct in6_addr lladdr;
-		if (ipv6_get_lladdr(dev, &lladdr, IFA_F_TENTATIVE))
-			get_random_bytes(eui, 8);
-		else
-			memcpy(eui, lladdr.s6_addr + 8, 8);
-		return 0;
-	}
 	}
 	return -1;
 }
@@ -1686,73 +1674,6 @@ static int __ipv6_try_regen_rndid(struct inet6_dev *idev, struct in6_addr *tmpad
 	if (tmpaddr && memcmp(idev->rndid, &tmpaddr->s6_addr[8], 8) == 0)
 		ret = __ipv6_regen_rndid(idev);
 	return ret;
-}
-#endif
-
-#if defined(CONFIG_IPV6_ROUTER_RS_PRD)
-static void addrconf_router_lifetime(int r_lifetime, struct inet6_ifaddr *ifp)
-{
-	unsigned long rt_period;
-	unsigned long valid_lft;
-	unsigned long prefered_lft;
-
-	if (HZ > USER_HZ) {
-		valid_lft = addrconf_timeout_fixup(ifp->valid_lft, HZ);
-		prefered_lft = addrconf_timeout_fixup(ifp->prefered_lft, HZ);
-	} else {
-		valid_lft = addrconf_timeout_fixup(ifp->valid_lft, USER_HZ);
-		prefered_lft = addrconf_timeout_fixup(ifp->prefered_lft,
-							USER_HZ);
-	}
-	if (addrconf_finite_timeout(valid_lft)) {
-		valid_lft *= HZ;
-		rt_period = min((unsigned long)r_lifetime, valid_lft);
-	 } else
-		rt_period = (unsigned long)r_lifetime;
-
-	rt_period *= 3;
-	rt_period /= 4;
-
-	if (addrconf_finite_timeout(prefered_lft)) {
-		prefered_lft *= HZ;
-		rt_period = min(rt_period, prefered_lft);
-	}
-
-	printk(KERN_DEBUG "%s: GOT RA with prefix : rlft %d, vlft %lu,"
-		"plft %lu, period %lu\n", ifp->idev->dev->name,
-		r_lifetime, valid_lft, prefered_lft, rt_period);
-
-	spin_lock(&ifp->lock);
-	addrconf_mod_timer(ifp, AC_RS_PRD, rt_period);
-	spin_unlock(&ifp->lock);
-
-}
-
-static void addrconf_rs_prd_timer(unsigned long data)
-{
-	struct inet6_ifaddr *ifp = (struct inet6_ifaddr *) data;
-	struct inet6_dev *idev = ifp->idev;
-
-	printk(KERN_DEBUG "%s: RS timer expired.\n", idev->dev->name);
-	read_lock(&idev->lock);
-	if (idev->dead || !(idev->if_flags & IF_READY)) {
-		printk(KERN_ERR "%s: Skip send RS for dead %d, !ready %d\n",
-				idev->dev->name, idev->dead,
-				!(idev->if_flags & IF_READY));
-		goto out;
-	}
-
-	ndisc_send_rs(idev->dev, &ifp->addr, &in6addr_linklocal_allrouters);
-	spin_lock_bh(&ifp->lock);
-	ifp->probes = 1;
-	ifp->idev->if_flags &= ~IF_RA_RCVD;
-	ifp->idev->if_flags |= IF_RS_SENT;
-	addrconf_mod_timer(ifp, AC_RS, ifp->idev->cnf.rtr_solicit_interval);
-	spin_unlock_bh(&ifp->lock);
-
-out:
-	read_unlock(&idev->lock);
-	in6_ifa_put(ifp);
 }
 #endif
 
@@ -1853,12 +1774,7 @@ static struct inet6_dev *addrconf_add_dev(struct net_device *dev)
 	return idev;
 }
 
-#if defined(CONFIG_IPV6_ROUTER_RS_PRD)
-void addrconf_prefix_rcv(struct net_device *dev, u8 *opt, int len,
-			int r_lifetime)
-#else
 void addrconf_prefix_rcv(struct net_device *dev, u8 *opt, int len)
-#endif
 {
 	struct prefix_info *pinfo;
 	__u32 valid_lft;
@@ -2142,10 +2058,6 @@ ok:
 			} else {
 				read_unlock_bh(&in6_dev->lock);
 			}
-#endif
-#if defined(CONFIG_IPV6_ROUTER_RS_PRD)
-			/* Send RS at 75% of valid lifetime */
-			addrconf_router_lifetime(r_lifetime, ifp);
 #endif
 			in6_ifa_put(ifp);
 			addrconf_verify(0);
@@ -2448,6 +2360,9 @@ static void sit_add_v4_addrs(struct inet6_dev *idev)
 static void init_loopback(struct net_device *dev)
 {
 	struct inet6_dev  *idev;
+	struct net_device *sp_dev;
+	struct inet6_ifaddr *sp_ifa;
+	struct rt6_info *sp_rt;
 
 	/* ::1 */
 
@@ -2459,6 +2374,35 @@ static void init_loopback(struct net_device *dev)
 	}
 
 	add_addr(idev, &in6addr_loopback, 128, IFA_HOST);
+
+	/* Add routes to other interface's IPv6 addresses */
+	for_each_netdev(dev_net(dev), sp_dev) {
+		if (!strcmp(sp_dev->name, dev->name))
+			continue;
+
+		idev = __in6_dev_get(sp_dev);
+		if (!idev)
+			continue;
+
+		read_lock_bh(&idev->lock);
+		list_for_each_entry(sp_ifa, &idev->addr_list, if_list) {
+
+			if (sp_ifa->flags & (IFA_F_DADFAILED | IFA_F_TENTATIVE))
+				continue;
+
+			if (sp_ifa->rt)
+				continue;
+
+			sp_rt = addrconf_dst_alloc(idev, &sp_ifa->addr, 0);
+
+			/* Failure cases are ignored */
+			if (!IS_ERR(sp_rt)) {
+				sp_ifa->rt = sp_rt;
+				ip6_ins_rt(sp_rt);
+			}
+		}
+		read_unlock_bh(&idev->lock);
+	}
 }
 
 static void addrconf_add_linklocal(struct inet6_dev *idev, const struct in6_addr *addr)
@@ -2492,7 +2436,6 @@ static void addrconf_dev_config(struct net_device *dev)
 	    (dev->type != ARPHRD_FDDI) &&
 	    (dev->type != ARPHRD_IEEE802_TR) &&
 	    (dev->type != ARPHRD_ARCNET) &&
-	    (dev->type != ARPHRD_RAWIP) &&
 	    (dev->type != ARPHRD_INFINIBAND)) {
 		/* Alas, we support only Ethernet autoconfiguration. */
 		return;
@@ -2895,10 +2838,8 @@ static void addrconf_rs_timer(unsigned long data)
 	if (idev->dead || !(idev->if_flags & IF_READY))
 		goto out;
 
-#if !defined(CONFIG_IPV6_ROUTER_RS_PRD)
 	if (idev->cnf.forwarding)
 		goto out;
-#endif
 
 	/* Announcement received after solicitation was sent */
 	if (idev->if_flags & IF_RA_RCVD)

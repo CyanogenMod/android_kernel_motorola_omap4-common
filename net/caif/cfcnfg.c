@@ -191,12 +191,11 @@ int caif_disconnect_client(struct net *net, struct cflayer *adap_layer)
 	if (channel_id != 0) {
 		struct cflayer *servl;
 		servl = cfmuxl_remove_uplayer(cfg->mux, channel_id);
-		cfctrl_linkdown_req(cfg->ctrl, channel_id, adap_layer);
 		if (servl != NULL)
 			layer_set_up(servl, NULL);
-	}
-	else
+	} else
 		pr_debug("nothing to disconnect\n");
+	cfctrl_linkdown_req(cfg->ctrl, channel_id, adap_layer);
 
 	/* Do RCU sync before initiating cleanup */
 	synchronize_rcu();
@@ -314,7 +313,6 @@ int caif_connect_client(struct net *net, struct caif_connect_request *conn_req,
 	int err;
 	struct cfctrl_link_param param;
 	struct cfcnfg *cfg = get_cfcnfg(net);
-	caif_assert(cfg != NULL);
 
 	rcu_read_lock();
 	err = caif_connect_req_to_link_param(cfg, conn_req, &param);

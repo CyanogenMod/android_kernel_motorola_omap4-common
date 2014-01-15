@@ -25,7 +25,9 @@ endif
 EXTRA_CFLAGS += -Iarch/arm/mach-omap2
 EXTRA_CFLAGS += -Iarch/arm/plat-omap/include/plat
 EXTRA_CFLAGS += -DCONFIG_TF_TEEC
+ifeq ($(CONFIG_ION),y)
 EXTRA_CFLAGS += -DCONFIG_TF_ION
+endif
 
 tf_driver-objs += tf_util.o
 tf_driver-objs += tf_conn.o
@@ -50,5 +52,4 @@ endif
 obj-$(CONFIG_SECURITY_MIDDLEWARE_COMPONENT) += tf_driver.o
 obj-$(CONFIG_SECURITY_MIDDLEWARE_COMPONENT) += rproc_drm.o
 
-plus_sec := $(call as-instr,.arch_extension sec,+sec)
-AFLAGS_bridge_pub2sec.o :=-Wa,-march=armv7-a$(plus_sec)
+obj-$(CONFIG_TF_CRYPTO_RNG) += tf_crypto_rng.o

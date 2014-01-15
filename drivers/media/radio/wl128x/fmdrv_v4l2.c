@@ -105,114 +105,6 @@ static u32 fm_v4l2_fops_poll(struct file *file, struct poll_table_struct *pts)
 	return 0;
 }
 
-/**********************************************************************/
-/* functions called from sysfs subsystem */
-
-static ssize_t show_af(struct device *dev,
-                struct device_attribute *attr, char *buf)
-{
-	struct fmdev *fmdev = dev_get_drvdata(dev);
-
-	return sprintf(buf,"%d\n",fmdev->rx.af_mode);
-}
-
-static ssize_t store_af(struct device *dev,
-                struct device_attribute *attr, char *buf, size_t size)
-{
-	int ret;
-	unsigned long af_mode;
-	struct fmdev *fmdev = dev_get_drvdata(dev);
-
-	if (strict_strtoul(buf, 0, &af_mode))
-		return -EINVAL;
-
-	if (af_mode < 0 || af_mode > 1)
-		return -EINVAL;
-
-	ret = fm_rx_set_af_switch(fmdev, af_mode);
-	if (ret < 0) {
-		fmerr("Failed to set AF Switch\n");
-		return ret;
-	}
-
-	return size;
-}
-
-static ssize_t show_band(struct device *dev,
-                struct device_attribute *attr, char *buf)
-{
-	struct fmdev *fmdev = dev_get_drvdata(dev);
-
-	return sprintf(buf,"%d\n",fmdev->rx.region.fm_band);
-}
-
-static ssize_t store_band(struct device *dev,
-                struct device_attribute *attr, char *buf, size_t size)
-{
-	int ret;
-	unsigned long fm_band;
-	struct fmdev *fmdev = dev_get_drvdata(dev);
-
-	if (strict_strtoul(buf, 0, &fm_band))
-		return -EINVAL;
-
-	if (fm_band < 0 || fm_band > 1)
-		return -EINVAL;
-
-	ret = fm_rx_set_region(fmdev, fm_band);
-	if (ret < 0) {
-		fmerr("Failed to set FM Band\n");
-		return ret;
-	}
-
-	return size;
-}
-
-static ssize_t show_rssi_lvl(struct device *dev,
-                struct device_attribute *attr, char *buf)
-{
-	struct fmdev *fmdev = dev_get_drvdata(dev);
-
-	return sprintf(buf,"%d\n",fmdev->rx.rssi_threshold);
-}
-static ssize_t store_rssi_lvl(struct device *dev,
-                struct device_attribute *attr, char *buf, size_t size)
-{
-	int ret;
-	unsigned long rssi_lvl;
-	struct fmdev *fmdev = dev_get_drvdata(dev);
-
-	if (strict_strtoul(buf, 0, &rssi_lvl))
-		return -EINVAL;
-
-	ret = fm_rx_set_rssi_threshold(fmdev, rssi_lvl);
-	if (ret < 0) {
-		fmerr("Failed to set RSSI level\n");
-		return ret;
-	}
-
-	return size;
-}
-
-/* structures specific for sysfs entries */
-static struct kobj_attribute v4l2_fm_rds_af =
-__ATTR(fm_rds_af, 0666, (void *)show_af, (void *)store_af);
-
-static struct kobj_attribute v4l2_fm_band =
-__ATTR(fm_band, 0666, (void *)show_band, (void *)store_band);
-
-static struct kobj_attribute v4l2_fm_rssi_lvl =
-__ATTR(fm_rssi_lvl, 0666, (void *) show_rssi_lvl, (void *)store_rssi_lvl);
-
-static struct attribute *v4l2_fm_attrs[] = {
-	&v4l2_fm_rds_af.attr,
-	&v4l2_fm_band.attr,
-	&v4l2_fm_rssi_lvl.attr,
-	NULL,
-};
-static struct attribute_group v4l2_fm_attr_grp = {
-	.attrs = v4l2_fm_attrs,
-};
 /*
  * Handle open request for "/dev/radioX" device.
  * Start with FM RX mode as default.
@@ -245,12 +137,6 @@ static int fm_v4l2_fops_open(struct file *file)
 	}
 	radio_disconnected = 1;
 
-	/* Register sysfs entries */
-	ret = sysfs_create_group(&fmdev->radio_dev->dev.kobj, &v4l2_fm_attr_grp);
-	if (ret) {
-		pr_err("failed to create sysfs entries");
-		return ret;
-	}
 	return ret;
 }
 
@@ -270,8 +156,6 @@ static int fm_v4l2_fops_release(struct file *file)
 		fmerr("Unable to turn off the chip\n");
 		return ret;
 	}
-
-	sysfs_remove_group(&fmdev->radio_dev->dev.kobj, &v4l2_fm_attr_grp);
 
 	ret = fmc_release(fmdev);
 	if (ret < 0) {
@@ -322,8 +206,6 @@ static int fm_v4l2_s_ctrl(struct v4l2_ctrl *ctrl)
 	struct fmdev *fmdev = container_of(ctrl->handler,
 			struct fmdev, ctrl_handler);
 
-	int ret;
-
 	switch (ctrl->id) {
 	case V4L2_CID_AUDIO_VOLUME:	/* set volume */
 		return fm_rx_set_volume(fmdev, (u16)ctrl->val);
@@ -337,38 +219,6 @@ static int fm_v4l2_s_ctrl(struct v4l2_ctrl *ctrl)
 
 	case V4L2_CID_TUNE_PREEMPHASIS:
 		return fm_tx_set_preemph_filter(fmdev, (u8) ctrl->val);
-
-	case V4L2_CID_RDS_TX_PI:
-		ret = set_rds_picode(fmdev, ctrl->val);
-		if (ret < 0) {
-			fmerr("Failed to set RDS Radio PS Name\n");
-			return ret;
-		}
-		return 0;
-
-	case V4L2_CID_RDS_TX_PTY:
-		ret = set_rds_pty(fmdev, ctrl->val);
-		if (ret < 0) {
-			fmerr("Failed to set RDS Radio PS Name\n");
-			return ret;
-		}
-		return 0;
-
-	case V4L2_CID_RDS_TX_PS_NAME:
-		ret = fm_tx_set_radio_text(fmdev, ctrl->string, 1);
-		if (ret < 0) {
-			fmerr("Failed to set RDS Radio PS Name\n");
-			return ret;
-		}
-		return 0;
-
-	case V4L2_CID_RDS_TX_RADIO_TEXT:
-		ret = fm_tx_set_radio_text(fmdev, ctrl->string, 2);
-		if (ret < 0) {
-			fmerr("Failed to set RDS Radio Text\n");
-			return ret;
-		}
-		return 0;
 
 	default:
 		return -EINVAL;
@@ -601,7 +451,6 @@ static int fm_v4l2_vidioc_s_modulator(struct file *file, void *priv,
 		fmerr("Failed to set mono/stereo mode for TX\n");
 		return ret;
 	}
-
 	ret = fm_tx_set_rds_mode(fmdev, rds_mode);
 	if (ret < 0)
 		fmerr("Failed to set rds mode for TX\n");
@@ -694,19 +543,7 @@ int fm_v4l2_init_video_device(struct fmdev *fmdev, int radio_nr)
 			FM_RX_VOLUME_MAX, 1, FM_RX_VOLUME_MAX);
 
 	v4l2_ctrl_new_std(&fmdev->ctrl_handler, &fm_ctrl_ops,
-			V4L2_CID_AUDIO_MUTE, 0, 1, 1, 0);
-
-	v4l2_ctrl_new_std(&fmdev->ctrl_handler, &fm_ctrl_ops,
-			V4L2_CID_RDS_TX_PI, 0x0, 0xffff, 1, 0x0);
-
-	v4l2_ctrl_new_std(&fmdev->ctrl_handler, &fm_ctrl_ops,
-			V4L2_CID_RDS_TX_PTY, 0, 32, 1, 0);
-
-	v4l2_ctrl_new_std(&fmdev->ctrl_handler, &fm_ctrl_ops,
-			V4L2_CID_RDS_TX_PS_NAME, 0, 0xffff, 1, 0);
-
-	v4l2_ctrl_new_std(&fmdev->ctrl_handler, &fm_ctrl_ops,
-			V4L2_CID_RDS_TX_RADIO_TEXT, 0, 0xffff, 1, 0);
+			V4L2_CID_AUDIO_MUTE, 0, 1, 1, 1);
 
 	v4l2_ctrl_new_std_menu(&fmdev->ctrl_handler, &fm_ctrl_ops,
 			V4L2_CID_TUNE_PREEMPHASIS, V4L2_PREEMPHASIS_75_uS,

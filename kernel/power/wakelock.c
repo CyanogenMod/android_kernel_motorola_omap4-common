@@ -31,7 +31,7 @@ enum {
 	DEBUG_EXPIRE = 1U << 3,
 	DEBUG_WAKE_LOCK = 1U << 4,
 };
-static int debug_mask = DEBUG_EXIT_SUSPEND | DEBUG_WAKEUP | DEBUG_SUSPEND;
+static int debug_mask = DEBUG_EXIT_SUSPEND | DEBUG_WAKEUP;
 module_param_named(debug_mask, debug_mask, int, S_IRUGO | S_IWUSR | S_IWGRP);
 
 #define WAKE_LOCK_TYPE_MASK              (0x0f)
@@ -49,7 +49,6 @@ struct wake_lock main_wake_lock;
 suspend_state_t requested_suspend_state = PM_SUSPEND_MEM;
 static struct wake_lock unknown_wakeup;
 static struct wake_lock suspend_backoff_lock;
-static struct wake_lock suspend_sync_wake_lock;
 
 #define SUSPEND_BACKOFF_THRESHOLD	10
 #define SUSPEND_BACKOFF_INTERVAL	10000
@@ -121,66 +120,25 @@ static int print_lock_stat(struct seq_file *m, struct wake_lock *lock)
 		     ktime_to_ns(lock->stat.last_time));
 }
 
-static int wakelock_stat_headers(struct seq_file *m)
+static int wakelock_stats_show(struct seq_file *m, void *unused)
 {
-	seq_printf(m, "name\tcount\texpire_count\twake_count\tactive_since"
-			"\ttotal_time\tsleep_time\tmax_time\tlast_change\n");
-	return 0;
-}
-
-static void *wakelock_seq_start(struct seq_file *m, loff_t *pos)
-{
-	int type, n = *pos;
 	unsigned long irqflags;
 	struct wake_lock *lock;
-
-	if (n == 0)
-		return SEQ_START_TOKEN;
-	n--;
+	int ret;
+	int type;
 
 	spin_lock_irqsave(&list_lock, irqflags);
-	list_for_each_entry(lock, &inactive_locks, link)
-		if (n-- == 0)
-			goto found;
 
+	ret = seq_puts(m, "name\tcount\texpire_count\twake_count\tactive_since"
+			"\ttotal_time\tsleep_time\tmax_time\tlast_change\n");
+	list_for_each_entry(lock, &inactive_locks, link)
+		ret = print_lock_stat(m, lock);
 	for (type = 0; type < WAKE_LOCK_TYPE_COUNT; type++) {
 		list_for_each_entry(lock, &active_wake_locks[type], link)
-			if (n-- == 0)
-				goto found;
+			ret = print_lock_stat(m, lock);
 	}
-	lock = NULL;
-found:
-	/* Copy to private data to avoid the lock being free'd before
-	 * getting to _show
-	 */
-	if (lock)
-		memcpy(m->private, lock, sizeof(struct wake_lock));
 	spin_unlock_irqrestore(&list_lock, irqflags);
-	return lock;
-}
-
-static void *wakelock_seq_next(struct seq_file *m, void *v, loff_t *pos)
-{
-	(*pos)++;
-	return wakelock_seq_start(m, pos);
-}
-
-static void wakelock_seq_stop(struct seq_file *m, void *v)
-{
-}
-
-static int wakelock_seq_show(struct seq_file *m, void *v)
-{
-	int ret;
-	unsigned long irqflags;
-
-	if (v == SEQ_START_TOKEN)
-		return wakelock_stat_headers(m);
-
-	spin_lock_irqsave(&list_lock, irqflags);
-	ret = print_lock_stat(m, m->private);
-	spin_unlock_irqrestore(&list_lock, irqflags);
-	return ret;
+	return 0;
 }
 
 static void wake_unlock_stat_locked(struct wake_lock *lock, int expired)
@@ -310,39 +268,6 @@ static void suspend_backoff(void)
 			  msecs_to_jiffies(SUSPEND_BACKOFF_INTERVAL));
 }
 
-DECLARE_COMPLETION(suspend_sync_complete);
-
-static void do_suspend_sync(struct work_struct *work)
-{
-	sys_sync();
-	wake_unlock(&suspend_sync_wake_lock);
-	kfree(work);
-	complete(&suspend_sync_complete);
-}
-
-static void suspend_sync(void)
-{
-	struct work_struct *work;
-	/* Avoid to loop to sys_sync */
-	if (wake_lock_active(&suspend_sync_wake_lock))
-		return;
-
-	/*
-	* Ignored previous sys_sync()
-	* because maybe it was done long time ago
-	*/
-	INIT_COMPLETION(suspend_sync_complete);
-
-	work = kmalloc(sizeof(*work), GFP_ATOMIC);
-	if (work) {
-		INIT_WORK(work, do_suspend_sync);
-		wake_lock(&suspend_sync_wake_lock);
-		schedule_work(work);
-	} else {
-		pr_err("suspend: failed to do sync because ENOMEM");
-	}
-}
-
 static void suspend(struct work_struct *work)
 {
 	int ret;
@@ -356,16 +281,7 @@ static void suspend(struct work_struct *work)
 	}
 
 	entry_event_num = current_event_num;
-	suspend_sync();
-
-	wait_for_completion_timeout(&suspend_sync_complete, HZ / 4);
-
-	if (wake_lock_active(&suspend_sync_wake_lock)) {
-		if (debug_mask & DEBUG_SUSPEND)
-			pr_info("suspend: abort suspend because syncing\n");
-		return;
-	}
-
+	sys_sync();
 	if (debug_mask & DEBUG_SUSPEND)
 		pr_info("suspend: enter suspend\n");
 	getnstimeofday(&ts_entry);
@@ -630,41 +546,9 @@ int wake_lock_active(struct wake_lock *lock)
 }
 EXPORT_SYMBOL(wake_lock_active);
 
-#ifdef CONFIG_WAKELOCK_STAT
-static const struct seq_operations wakelock_seq_ops = {
-	.start = wakelock_seq_start,
-	.next  = wakelock_seq_next,
-	.stop  = wakelock_seq_stop,
-	.show  = wakelock_seq_show,
-};
-
 static int wakelock_stats_open(struct inode *inode, struct file *file)
 {
-	int ret;
-	struct seq_file *m;
-	struct wake_lock *lock;
-
-	lock = kmalloc(sizeof(struct wake_lock), GFP_KERNEL);
-	if (!lock)
-		return -ENOMEM;
-
-	ret = seq_open(file, &wakelock_seq_ops);
-	if (ret) {
-		kfree(lock);
-		return ret;
-	}
-
-	m = file->private_data;
-	m->private = lock;
-	return ret;
-}
-
-static int wakelock_stats_release(struct inode *inode, struct file *file)
-{
-	struct seq_file *m = file->private_data;
-
-	kfree(m->private);
-	return seq_release(inode, file);
+	return single_open(file, wakelock_stats_show, NULL);
 }
 
 static const struct file_operations wakelock_stats_fops = {
@@ -672,9 +556,8 @@ static const struct file_operations wakelock_stats_fops = {
 	.open = wakelock_stats_open,
 	.read = seq_read,
 	.llseek = seq_lseek,
-	.release = wakelock_stats_release,
+	.release = single_release,
 };
-#endif
 
 static int __init wakelocks_init(void)
 {
@@ -693,8 +576,6 @@ static int __init wakelocks_init(void)
 	wake_lock_init(&unknown_wakeup, WAKE_LOCK_SUSPEND, "unknown_wakeups");
 	wake_lock_init(&suspend_backoff_lock, WAKE_LOCK_SUSPEND,
 		       "suspend_backoff");
-	wake_lock_init(&suspend_sync_wake_lock, WAKE_LOCK_SUSPEND,
-		       "suspend_sync");
 
 	ret = platform_device_register(&power_device);
 	if (ret) {
@@ -724,7 +605,6 @@ err_suspend_work_queue:
 err_platform_driver_register:
 	platform_device_unregister(&power_device);
 err_platform_device_register:
-	wake_lock_destroy(&suspend_sync_wake_lock);
 	wake_lock_destroy(&suspend_backoff_lock);
 	wake_lock_destroy(&unknown_wakeup);
 	wake_lock_destroy(&main_wake_lock);
@@ -742,7 +622,6 @@ static void  __exit wakelocks_exit(void)
 	destroy_workqueue(suspend_work_queue);
 	platform_driver_unregister(&power_driver);
 	platform_device_unregister(&power_device);
-	wake_lock_destroy(&suspend_sync_wake_lock);
 	wake_lock_destroy(&suspend_backoff_lock);
 	wake_lock_destroy(&unknown_wakeup);
 	wake_lock_destroy(&main_wake_lock);

@@ -44,10 +44,6 @@
 
 #include "s_version.h"
 
-#ifdef CONFIG_TF_ION
-extern struct ion_device *omap_ion_device;
-#endif
-
 /*----------------------------------------------------------------------------
  * Forward Declarations
  *----------------------------------------------------------------------------*/
@@ -388,7 +384,7 @@ static int __init tf_device_register(void)
 	}
 
 #ifdef CONFIG_TF_DRIVER_CRYPTO_FIPS
-	error = tf_self_test_post_init(&(dev_stats->kobj));
+	error = tf_self_test_post_init(&(g_tf_dev.kobj));
 	/* N.B. error > 0 indicates a POST failure, which will not
 	   prevent the module from loading. */
 	if (error < 0) {
@@ -582,9 +578,9 @@ static long tf_device_ioctl(struct file *file, unsigned int ioctl_num,
 		/* Initialize ION connection */
 		if (connection->ion_client == NULL) {
 			connection->ion_client = ion_client_create(
-						omap_ion_device,
+						zebra_ion_device,
 						(1 << ION_HEAP_TYPE_CARVEOUT),
-						"smc");
+						"tf");
 		}
 
 		if (connection->ion_client == NULL) {

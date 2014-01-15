@@ -145,10 +145,8 @@ static int ecryptfs_show_options(struct seq_file *m, struct vfsmount *mnt)
 			    mount_crypt_stat_list) {
 		if (walker->flags & ECRYPTFS_AUTH_TOK_FNEK)
 			seq_printf(m, ",ecryptfs_fnek_sig=%s", walker->sig);
-		else if (walker->flags & ECRYPTFS_AUTH_TOK_PRIMARY)
-			seq_printf(m, ",ecryptfs_sig=%s", walker->sig);
 		else
-			seq_printf(m, ",sig=%s", walker->sig);
+			seq_printf(m, ",ecryptfs_sig=%s", walker->sig);
 	}
 	mutex_unlock(&mount_crypt_stat->global_auth_tok_list_mutex);
 
@@ -168,8 +166,6 @@ static int ecryptfs_show_options(struct seq_file *m, struct vfsmount *mnt)
 		seq_printf(m, ",ecryptfs_unlink_sigs");
 	if (mount_crypt_stat->flags & ECRYPTFS_GLOBAL_MOUNT_AUTH_TOK_ONLY)
 		seq_printf(m, ",ecryptfs_mount_auth_tok_only");
-	if (mount_crypt_stat->flags & ECRYPTFS_NO_NEW_ENCRYPTED)
-		seq_printf(m, ",no_new_encrypted");
 
 	return 0;
 }

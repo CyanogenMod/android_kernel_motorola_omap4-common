@@ -28,6 +28,7 @@
 #include <linux/prctl.h>
 #include <linux/securebits.h>
 #include <linux/user_namespace.h>
+#include <linux/personality.h>
 
 #ifdef CONFIG_ANDROID_PARANOID_NETWORK
 #include <linux/android_aid.h>
@@ -87,12 +88,10 @@ EXPORT_SYMBOL(cap_netlink_recv);
 int cap_capable(struct task_struct *tsk, const struct cred *cred,
 		struct user_namespace *targ_ns, int cap, int audit)
 {
-#ifdef CONFIG_ANDROID_PARANOID_NETWORK
 	if (cap == CAP_NET_RAW && in_egroup_p(AID_NET_RAW))
 		return 0;
 	if (cap == CAP_NET_ADMIN && in_egroup_p(AID_NET_ADMIN))
 		return 0;
-#endif
 
 	for (;;) {
 		/* The creator of the user namespace has all caps. */
@@ -520,6 +519,11 @@ int cap_bprm_set_creds(struct linux_binprm *bprm)
 			effective = true;
 	}
 skip:
+
+	/* if we have fs caps, clear dangerous personality flags */
+	if (!cap_issubset(new->cap_permitted, old->cap_permitted))
+		bprm->per_clear |= PER_CLEAR_ON_SETID;
+
 
 	/* Don't let someone trace a set[ug]id/setpcap binary with the revised
 	 * credentials unless they have the appropriate permit

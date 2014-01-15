@@ -19,13 +19,12 @@
 #include <linux/uaccess.h>
 #include <linux/debugfs.h>
 #include <linux/caif/caif_socket.h>
-#include <asm/atomic.h>
+#include <linux/atomic.h>
 #include <net/sock.h>
 #include <net/tcp_states.h>
 #include <net/caif/caif_layer.h>
 #include <net/caif/caif_dev.h>
 #include <net/caif/cfpkt.h>
-#include <linux/android_aid.h>
 
 MODULE_LICENSE("GPL");
 MODULE_ALIAS_NETPROTO(AF_CAIF);
@@ -321,6 +320,8 @@ static int caif_seqpkt_recvmsg(struct kiocb *iocb, struct socket *sock,
 	if (m->msg_flags&MSG_OOB)
 		goto read_error;
 
+	m->msg_namelen = 0;
+
 	skb = skb_recv_datagram(sk, flags, 0 , &ret);
 	if (!skb)
 		goto read_error;
@@ -540,10 +541,8 @@ static int transmit_skb(struct sk_buff *skb, struct caifsock *cf_sk,
 	pkt = cfpkt_fromnative(CAIF_DIR_OUT, skb);
 	memset(skb->cb, 0, sizeof(struct caif_payload_info));
 
-	if (cf_sk->layer.dn == NULL) {
-		kfree_skb(skb);
+	if (cf_sk->layer.dn == NULL)
 		return -EINVAL;
-	}
 
 	return cf_sk->layer.dn->transmit(cf_sk->layer.dn, pkt);
 }
@@ -686,10 +685,10 @@ static int caif_stream_sendmsg(struct kiocb *kiocb, struct socket *sock,
 		}
 		err = transmit_skb(skb, cf_sk,
 				msg->msg_flags&MSG_DONTWAIT, timeo);
-		if (err < 0)
-			/* skb is already freed */
+		if (err < 0) {
+			kfree_skb(skb);
 			goto pipe_err;
-
+		}
 		sent += size;
 	}
 
@@ -1070,7 +1069,7 @@ static int caif_create(struct net *net, struct socket *sock, int protocol,
 		.obj_size = sizeof(struct caifsock),
 	};
 
-	if (!capable(CAP_SYS_ADMIN) && !capable(CAP_NET_ADMIN) && !in_egroup_p(AID_MOT_CAIF))
+	if (!capable(CAP_SYS_ADMIN) && !capable(CAP_NET_ADMIN))
 		return -EPERM;
 	/*
 	 * The sock->type specifies the socket type to use.

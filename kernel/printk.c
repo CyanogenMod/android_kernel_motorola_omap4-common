@@ -371,8 +371,10 @@ static int check_syslog_permissions(int type, bool from_file)
 			return 0;
 		/* For historical reasons, accept CAP_SYS_ADMIN too, with a warning */
 		if (capable(CAP_SYS_ADMIN)) {
-			WARN_ONCE(1, "Attempt to access syslog with CAP_SYS_ADMIN "
-				 "but no CAP_SYSLOG (deprecated).\n");
+			printk_once(KERN_WARNING "%s (%d): "
+				 "Attempt to access syslog with CAP_SYS_ADMIN "
+				 "but no CAP_SYSLOG (deprecated).\n",
+				 current->comm, task_pid_nr(current));
 			return 0;
 		}
 		return -EPERM;
@@ -684,8 +686,19 @@ static void call_console_drivers(unsigned start, unsigned end)
 	start_print = start;
 	while (cur_index != end) {
 		if (msg_level < 0 && ((end - cur_index) > 2)) {
+			/*
+			 * prepare buf_prefix, as a contiguous array,
+			 * to be processed by log_prefix function
+			 */
+			char buf_prefix[SYSLOG_PRI_MAX_LENGTH+1];
+			unsigned i;
+			for (i = 0; i < ((end - cur_index)) && (i < SYSLOG_PRI_MAX_LENGTH); i++) {
+				buf_prefix[i] = LOG_BUF(cur_index + i);
+			}
+			buf_prefix[i] = '\0'; /* force '\0' as last string character */
+
 			/* strip log prefix */
-			cur_index += log_prefix(&LOG_BUF(cur_index), &msg_level, NULL);
+			cur_index += log_prefix((const char *)&buf_prefix, &msg_level, NULL);
 			start_print = cur_index;
 		}
 		while (cur_index != end) {
@@ -720,13 +733,13 @@ extern void emergency_dump(void);
 static void emit_log_char(char c)
 {
 #ifdef CONFIG_APANIC_MMC
-	static int is_begin;
+       static int is_begin;
 
-	if (unlikely(start_apanic_threads) && !is_begin) {
-		is_begin = 1;
-		log_end = 0;
-		logged_chars = 0;
-	}
+       if (unlikely(start_apanic_threads) && !is_begin) {
+               is_begin = 1;
+               log_end = 0;
+               logged_chars = 0;
+       }
 #endif
 	LOG_BUF(log_end) = c;
 	log_end++;
@@ -737,11 +750,11 @@ static void emit_log_char(char c)
 	if (logged_chars < log_buf_len)
 		logged_chars++;
 #ifdef CONFIG_APANIC_MMC
-	if (unlikely(start_apanic_threads &&
-		((log_end & (LOG_BUF_MASK + 1)) == __LOG_BUF_LEN))) {
-		emergency_dump();
-		is_begin = 0;
-	}
+       if (unlikely(start_apanic_threads &&
+               ((log_end & (LOG_BUF_MASK + 1)) == __LOG_BUF_LEN))) {
+               emergency_dump();
+               is_begin = 0;
+       }
 #endif
 }
 
@@ -1005,10 +1018,9 @@ asmlinkage int vprintk(const char *fmt, va_list args)
 
 				t = cpu_clock(printk_cpu);
 				nanosec_rem = do_div(t, 1000000000);
-				tlen = sprintf(tbuf, "[%5lu.%06lu,%d] ",
+				tlen = sprintf(tbuf, "[%5lu.%06lu] ",
 						(unsigned long) t,
-						nanosec_rem / 1000,
-						smp_processor_id());
+						nanosec_rem / 1000);
 
 				for (tp = tbuf; tp < tbuf + tlen; tp++)
 					emit_log_char(*tp);

@@ -233,7 +233,7 @@ u32 tf_crypto_init(void)
 	mutex_init(&dev->sm.dma_mutex);
 
 	/*allocate DMA buffer */
-	dev->dma_buffer_length = PAGE_SIZE * 16;
+	dev->dma_buffer_length = PAGE_SIZE;
 	dev->dma_buffer = dma_alloc_coherent(NULL,
 		dev->dma_buffer_length,
 		&(dev->dma_buffer_phys),
@@ -801,7 +801,7 @@ u32 tf_crypto_turn_off_clocks(void)
 	spin_unlock_irqrestore(&clk_lock, flags);
 
 	if (ret == 0xff)
-		printk("Error calling API_HAL_HWATURNOFF_INDEX");
+		panic("Error calling API_HAL_HWATURNOFF_INDEX");
 
 	return ret;
 }

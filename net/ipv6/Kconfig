@@ -250,18 +250,4 @@ config IPV6_PIMSM_V2
 	  Support for IPv6 PIM multicast routing protocol PIM-SMv2.
 	  If unsure, say N.
 
-config IPV6_ROUTER_RS_PRD
-	bool "ICMPv6: Solicing RS sending support"
-	default n
-	---help---
-	The device may refresh its IPv6 address by soliciting a new Router
-	Advertisement message from the network. If the device needs to
-	solicit a new Router Advertisement message, it shall wait until
-	either "Preferred Lifetime" has expired or 75% of the valid lifetime
-	(determined by taking the minimum of the "Valid Lifetime" and the
-	"Router Lifetime") has expired before sending the Router Solicitation
-	 message.
-
-	If VZW, say y.
-
 endif # IPV6

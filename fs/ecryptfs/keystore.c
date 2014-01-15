@@ -1896,9 +1896,6 @@ find_next_matching_auth_tok:
 	if (!found_auth_tok) {
 		ecryptfs_printk(KERN_ERR, "Could not find a usable "
 				"authentication token\n");
-		/* when the key is not found, auth_tok_key may have
-		 * a wrong value, need to clean the key */
-		auth_tok_key = NULL;
 		rc = -EIO;
 		goto out_wipe_list;
 	}

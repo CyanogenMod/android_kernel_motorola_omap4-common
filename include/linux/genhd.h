@@ -56,11 +56,7 @@ enum {
 	UNIXWARE_PARTITION = 0x63,	/* Same as GNU_HURD and SCO Unix */
 };
 
-#if defined(CONFIG_DISK_MAX_PARTS)
-#define DISK_MAX_PARTS			CONFIG_DISK_MAX_PARTS
-#else
 #define DISK_MAX_PARTS			256
-#endif
 #define DISK_NAME_LEN			32
 
 #include <linux/major.h>
@@ -223,12 +219,6 @@ static inline void part_pack_uuid(const u8 *uuid_str, u8 *to)
 			continue;
 		}
 	}
-}
-
-static inline char *part_unpack_uuid(const u8 *uuid, char *out)
-{
-	sprintf(out, "%pU", uuid);
-	return out;
 }
 
 static inline int disk_max_parts(struct gendisk *disk)
@@ -598,6 +588,7 @@ extern char *disk_name (struct gendisk *hd, int partno, char *buf);
 
 extern int disk_expand_part_tbl(struct gendisk *disk, int target);
 extern int rescan_partitions(struct gendisk *disk, struct block_device *bdev);
+extern int invalidate_partitions(struct gendisk *disk, struct block_device *bdev);
 extern struct hd_struct * __must_check add_partition(struct gendisk *disk,
 						     int partno, sector_t start,
 						     sector_t len, int flags,

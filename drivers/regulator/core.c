@@ -904,20 +904,13 @@ static int set_machine_constraints(struct regulator_dev *rdev,
 	/* If the constraints say the regulator should be on at this point
 	 * and we have control then make sure it is enabled.
 	 */
-	if (constraints->always_on || constraints->boot_on) {
-		if (ops->enable) {
+	if ((rdev->constraints->always_on || rdev->constraints->boot_on) &&
+		ops->enable) {
 			ret = ops->enable(rdev);
-			if (ret < 0) {
-				rdev_err(rdev, "failed to enable\n");
-				rdev->constraints = NULL;
-				goto out;
-			}
-		}
-	} else if (ops->disable) {
-		ret = ops->disable(rdev);
 		if (ret < 0) {
-			rdev_warn(rdev, "disable --> %d\n", ret);
+			rdev_err(rdev, "failed to enable\n");
 			rdev->constraints = NULL;
+			goto out;
 		}
 	}
 

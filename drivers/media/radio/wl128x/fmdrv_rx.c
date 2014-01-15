@@ -155,7 +155,7 @@ static u32 fm_rx_set_channel_spacing(struct fmdev *fmdev, u32 spacing)
 
 	/* set channel spacing */
 	payload = spacing;
-	ret = fmc_send_cmd(fmdev, SCAN_SPACING_SET, REG_WR, &payload,
+	ret = fmc_send_cmd(fmdev, CHANL_BW_SET, REG_WR, &payload,
 			sizeof(payload), NULL, NULL);
 	if (ret < 0)
 		return ret;
@@ -309,6 +309,7 @@ u32 fm_rx_set_volume(struct fmdev *fmdev, u16 vol_to_set)
 			   FM_RX_VOLUME_MIN, FM_RX_VOLUME_MAX);
 		return -EINVAL;
 	}
+	vol_to_set *= FM_RX_VOLUME_GAIN_STEP;
 
 	payload = vol_to_set;
 	ret = fmc_send_cmd(fmdev, VOLUME_SET, REG_WR, &payload,
@@ -331,7 +332,7 @@ u32 fm_rx_get_volume(struct fmdev *fmdev, u16 *curr_vol)
 		return -ENOMEM;
 	}
 
-	*curr_vol = fmdev->rx.volume;
+	*curr_vol = fmdev->rx.volume / FM_RX_VOLUME_GAIN_STEP;
 
 	return 0;
 }
@@ -548,7 +549,7 @@ u32 fm_rx_set_rssi_threshold(struct fmdev *fmdev, short rssi_lvl_toset)
 		fmerr("Invalid RSSI threshold level\n");
 		return -EINVAL;
 	}
-	payload = (u16) rssi_lvl_toset;
+	payload = (u16)rssi_lvl_toset;
 	ret = fmc_send_cmd(fmdev, SEARCH_LVL_SET, REG_WR, &payload,
 			sizeof(payload), NULL, NULL);
 	if (ret < 0)

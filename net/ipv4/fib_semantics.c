@@ -152,8 +152,6 @@ static void free_fib_info_rcu(struct rcu_head *head)
 	} endfor_nexthops(fi);
 
 	release_net(fi->fib_net);
-	if (fi->fib_metrics != (u32 *) dst_default_metrics)
-		kfree(fi->fib_metrics);
 	kfree(fi);
 }
 
@@ -1116,7 +1114,7 @@ void fib_select_default(struct fib_result *res)
 		order++;
 	}
 
-	if (order <= 0 || fi == NULL) {
+	if (order <= 0 || fi == NULL || fi->fib_dev == NULL) {
 		tb->tb_default = -1;
 		goto out;
 	}

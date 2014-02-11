@@ -370,7 +370,7 @@ static int __init lis3dh_init(struct device_node *node)
 {
 	const void *prop;
 	int len = 0;
-	struct i2c_board_info i2c_info;
+	static struct i2c_board_info i2c_info = {0};
 	u8 i2c_bus;
 	int err;
 

@@ -118,9 +118,30 @@ static struct notifier_block lis3dh_pm_notifier;
 
 static int lis3dh_i2c_read(struct lis3dh_data *lis, u8 * buf, int len)
 {
-	lis->client->flags = 0;
-	int err = i2c_smbus_read_i2c_block_data(lis->client, buf[0], len, buf);
-	if (err != len) {
+	int err;
+	int tries = 0;
+	struct i2c_msg msgs[] = {
+		{
+		 .addr = lis->client->addr,
+		 .flags = lis->client->flags & I2C_M_TEN,
+		 .len = 1,
+		 .buf = buf,
+		 },
+		{
+		 .addr = lis->client->addr,
+		 .flags = (lis->client->flags & I2C_M_TEN) | I2C_M_RD,
+		 .len = len,
+		 .buf = buf,
+		 },
+	};
+
+	do {
+		err = i2c_transfer(lis->client->adapter, msgs, 2);
+		if (err != 2)
+			msleep_interruptible(I2C_RETRY_DELAY);
+	} while ((err != 2) && (++tries < I2C_RETRIES));
+
+	if (err != 2) {
 		dev_err(&lis->client->dev, "read transfer error\n");
 		err = -EIO;
 	} else {
@@ -132,9 +153,24 @@ static int lis3dh_i2c_read(struct lis3dh_data *lis, u8 * buf, int len)
 
 static int lis3dh_i2c_write(struct lis3dh_data *lis, u8 * buf, int len)
 {
-	lis->client->flags = 0;
-	int err = i2c_smbus_write_i2c_block_data(lis->client, buf[0], len, buf+1);
-	if (err) {
+	int err;
+	int tries = 0;
+	struct i2c_msg msgs[] = {
+		{
+		 .addr = lis->client->addr,
+		 .flags = lis->client->flags & I2C_M_TEN,
+		 .len = len + 1,
+		 .buf = buf,
+		 },
+	};
+
+	do {
+		err = i2c_transfer(lis->client->adapter, msgs, 1);
+		if (err != 1)
+			msleep_interruptible(I2C_RETRY_DELAY);
+	} while ((err != 1) && (++tries < I2C_RETRIES));
+
+	if (err != 1) {
 		dev_err(&lis->client->dev, "write transfer error\n");
 		err = -EIO;
 	} else {

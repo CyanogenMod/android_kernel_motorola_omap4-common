@@ -31,6 +31,7 @@
 #include <linux/suspend.h>
 #include <linux/types.h>
 #include <linux/uaccess.h>
+#include <linux/wakelock.h>
 #include <linux/workqueue.h>
 
 struct isl29030_data {
@@ -43,6 +44,7 @@ struct isl29030_data {
 	struct miscdevice miscdevice;
 	struct notifier_block pm_notifier;
 	struct mutex mutex;
+	struct wake_lock wl;
 	unsigned int suspended;
 	unsigned int hw_initialized;
 	unsigned int prox_enabled;
@@ -369,6 +371,7 @@ static int isl29030_report_prox(struct isl29030_data *isl, int force_report)
 	if (error != 0) {
 		pr_err("%s:Unable to read interrupt register: %d\n",
 			__func__, error);
+		wake_unlock(&isl->wl);
 		return 1;
 	}
 
@@ -401,6 +404,8 @@ static int isl29030_report_prox(struct isl29030_data *isl, int force_report)
 		input_event(isl->dev, EV_MSC, MSC_RAW,
 			isl->prox_near ? PROXIMITY_NEAR : PROXIMITY_FAR);
 		input_sync(isl->dev);
+	} else {
+		wake_unlock(&isl->wl);
 	}
 
 	return !isl->prox_near;
@@ -846,6 +851,7 @@ static irqreturn_t ld_isl29030_irq_handler(int irq, void *dev)
 	struct isl29030_data *isl = dev;
 
 	disable_irq_nosync(isl->client->irq);
+	wake_lock_timeout(&isl->wl, HZ);
 	queue_work(isl->workqueue, &isl->work);
 	enable_irq(isl->client->irq);
 
@@ -862,6 +868,7 @@ static void isl29030_work_func_locked(struct isl29030_data *isl)
 	if (error != 0) {
 		pr_err("%s: Unable to read interrupt register: %d\n",
 			__func__, error);
+		wake_unlock(&isl->wl);
 		return;
 	}
 
@@ -870,6 +877,8 @@ static void isl29030_work_func_locked(struct isl29030_data *isl)
 
 	if (isl->prox_enabled)
 		clear_prox = isl29030_report_prox(isl, 0);
+	else
+		wake_unlock(&isl->wl);
 
 	if (clear_prox)
 		isl29030_clear_prox_and_als_flags(isl);
@@ -1056,6 +1065,10 @@ static int ld_isl29030_probe(struct i2c_client *client,
 
 	INIT_WORK(&isl->work, ld_isl29030_work_func);
 
+	wake_lock_init(&isl->wl, WAKE_LOCK_SUSPEND, "isl29030_wake");
+
+	mutex_init(&isl->mutex);
+
 	error = request_irq(client->irq,
 		ld_isl29030_irq_handler,
 		(IRQF_TRIGGER_FALLING | IRQF_TRIGGER_RISING),
@@ -1069,8 +1082,6 @@ static int ld_isl29030_probe(struct i2c_client *client,
 	disable_irq(client->irq);
 
 	i2c_set_clientdata(client, isl);
-
-	mutex_init(&isl->mutex);
 
 	error = input_register_device(isl->dev);
 	if (error) {
@@ -1128,6 +1139,7 @@ static int ld_isl29030_remove(struct i2c_client *client)
 	isl29030_device_power_off(isl);
 
 	input_unregister_device(isl->dev);
+	wake_lock_destroy(&isl->wl);
 
 	mutex_destroy(&isl->mutex);
 	i2c_set_clientdata(client, NULL);

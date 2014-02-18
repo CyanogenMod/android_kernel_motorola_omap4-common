@@ -47,7 +47,6 @@
 static struct usbhs_omap_platform_data		usbhs_data;
 static struct ehci_hcd_omap_platform_data	ehci_data;
 static struct ohci_hcd_omap_platform_data	ohci_data;
-static int usbhs_update_sar;
 
 static struct omap_device_pm_latency omap_uhhtll_latency[] = {
 	  {
@@ -841,16 +840,6 @@ static void setup_4430ehci_drvstrength(const enum usbhs_omap_port_mode
 	}
 }
 
-int omap4430_usbhs_update_sar(void)
-{
-	if (usbhs_update_sar) {
-		usbhs_update_sar = 0;
-		return 1;
-	}
-
-	return 0;
-}
-
 void usbhs_wakeup()
 {
 	int workq = 0;
@@ -904,8 +893,6 @@ void __init usbhs_init(const struct usbhs_omap_board_data *pdata)
 	ehci_data.ehci_phy_vbus_not_used = pdata->ehci_phy_vbus_not_used;
 	ohci_data.es2_compatibility = pdata->es2_compatibility;
 	ohci_data.ohci_phy_suspend = pdata->ohci_phy_suspend;
-	ehci_data.usbhs_update_sar = &usbhs_update_sar;
-	ohci_data.usbhs_update_sar = &usbhs_update_sar;
 	usbhs_data.ehci_data = &ehci_data;
 	usbhs_data.ohci_data = &ohci_data;
 

@@ -103,6 +103,7 @@ struct mdm6600_port {
 	u16 maxpkt;
 	u16 tiocm_status;
 	struct delayed_work wake_work;
+	int num_errors;
 };
 
 static int mdm6600_wake_irq;
@@ -740,6 +741,16 @@ static void mdm6600_read_int_callback(struct urb *u)
 	case -EPROTO:
 		dbg("%s: urb terminated, status %d", __func__, u->status);
 		return;
+	case -ETIME:
+		modem->num_errors++;
+		if (modem->num_errors == 5) {
+			dbg("%s: urb status -ETIME, count %d, terminating urb", __func__, modem->num_errors);
+			modem->num_errors = 0;
+			return;
+		} else {
+			dbg("%s: urb status -ETIME, count %d", __func__, modem->num_errors);
+		}
+		goto exit;
 	default:
 		pr_warn("%s non-zero status %d\n", __func__, u->status);
 		goto exit;

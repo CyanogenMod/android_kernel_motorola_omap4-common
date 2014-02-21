@@ -125,31 +125,19 @@ bool qc_isdown(struct qcusbnet *dev, u8 reason)
 static void read_callback(struct urb *urb)
 {
 	struct list_head *node;
-	int result;
-	u16 cid;
 	struct client *client;
+	struct qcusbnet *dev = (struct qcusbnet *)urb->context;
 	void *data;
 	void *copy;
-	u16 size;
-	struct qcusbnet *dev;
 	unsigned long flags;
+	int result;
+	u16 cid;
+	u16 size;
 	u16 tid;
 
-	dev = urb->context;
-
-	urb->complete = NULL;
-	switch (urb->status) {
-	case 0:
-		break;
-	case -ECONNRESET:
-	case -ENOENT:
-	case -ESHUTDOWN:
-	case -EPROTO:
-		DBG("urb terminated, status %d\n", urb->status);
-		return;
-	default:
+	if (urb->status) {
 		ERR("non-zero status %d\n", urb->status);
-		resubmit_int_urb(dev->qmi.inturb);
+		urb->complete = NULL;
 		return;
 	}
 
@@ -165,13 +153,13 @@ static void read_callback(struct urb *urb)
 	result = qmux_parse(&cid, data, size);
 	if (result < 0) {
 		ERR("Read error parsing QMUX %d\n", result);
-		resubmit_int_urb(dev->qmi.inturb);
+		urb->complete = NULL;
 		return;
 	}
 
 	if (size < result + 3) {
-		DBG("Data buffer too small to parse\n");
-		resubmit_int_urb(dev->qmi.inturb);
+		ERR("Data buffer too small to parse\n");
+		urb->complete = NULL;
 		return;
 	}
 
@@ -189,6 +177,7 @@ static void read_callback(struct urb *urb)
 				ERR("malloc failed\n");
 				spin_unlock_irqrestore(&dev->qmi.clients_lock,
 								flags);
+				urb->complete = NULL;
 				return;
 			}
 			memcpy(copy, data, size);
@@ -198,7 +187,7 @@ static void read_callback(struct urb *urb)
 				kfree(copy);
 				spin_unlock_irqrestore(&dev->qmi.clients_lock,
 								flags);
-				resubmit_int_urb(dev->qmi.inturb);
+				urb->complete = NULL;
 				return;
 			}
 
@@ -216,7 +205,7 @@ static void read_callback(struct urb *urb)
 	}
 
 	spin_unlock_irqrestore(&dev->qmi.clients_lock, flags);
-	resubmit_int_urb(dev->qmi.inturb);
+	urb->complete = NULL;
 }
 
 static void int_callback(struct urb *urb)
@@ -226,7 +215,8 @@ static void int_callback(struct urb *urb)
 
 	urb->complete = NULL;
 	if (urb->status) {
-		DBG("Int status = %d\n", urb->status);
+		if (-ENOENT != urb->status)
+			ERR("non-zero status = %d\n", urb->status);
 		if (urb->status != -EOVERFLOW)
 			return;
 	} else {
@@ -235,7 +225,7 @@ static void int_callback(struct urb *urb)
 					CDC_GET_ENCAPSULATED_RESPONSE) {
 
 			if (dev->qmi.readurb->complete) {
-				DBG("Read URB in use\n");
+				ERR("Read URB in use\n");
 				resubmit_int_urb(dev->qmi.inturb);
 				return;
 			}
@@ -284,12 +274,19 @@ static int resubmit_int_urb(struct urb *urb)
 {
 	int status;
 	int interval;
+	struct qcusbnet *dev = (struct qcusbnet *)urb->context;
+
 	if (!urb || !urb->dev)
 		return -EINVAL;
 	if (urb->complete) {
-		DBG("Int URB already in use\n");
+		ERR("Int URB already in use\n");
 		return -EINVAL;
 	}
+	if (dev->stopped) {
+		ERR("Interface Stopped. Don't Submit.\n");
+		return -EINVAL;
+	}
+
 	interval = urb->dev->speed == USB_SPEED_HIGH ? 7 : 3;
 	usb_fill_int_urb(urb, urb->dev, urb->pipe, urb->transfer_buffer,
 			 urb->transfer_buffer_length, int_callback,
@@ -307,43 +304,9 @@ int qc_startread(struct qcusbnet *dev)
 	int i;
 	struct usb_host_endpoint *endpoint = NULL;
 
-	dev->qmi.readurb = usb_alloc_urb(0, GFP_KERNEL);
-	if (!dev->qmi.readurb) {
-		ERR("Error allocating read urb\n");
-		return -ENOMEM;
-	}
-
-	dev->qmi.inturb = usb_alloc_urb(0, GFP_KERNEL);
-	if (!dev->qmi.inturb) {
-		usb_free_urb(dev->qmi.readurb);
-		ERR("Error allocating int urb\n");
-		return -ENOMEM;
-	}
-
-	dev->qmi.readbuf = kmalloc(DEFAULT_READ_URB_LENGTH, GFP_KERNEL);
-	if (!dev->qmi.readbuf) {
-		usb_free_urb(dev->qmi.readurb);
-		usb_free_urb(dev->qmi.inturb);
-		ERR("Error allocating read buffer\n");
-		return -ENOMEM;
-	}
-
-	dev->qmi.intbuf = kmalloc(DEFAULT_READ_URB_LENGTH, GFP_KERNEL);
-	if (!dev->qmi.intbuf) {
-		usb_free_urb(dev->qmi.readurb);
-		usb_free_urb(dev->qmi.inturb);
-		kfree(dev->qmi.readbuf);
-		ERR("Error allocating int buffer\n");
-		return -ENOMEM;
-	}
-
-	dev->qmi.readsetup = kmalloc(sizeof(*dev->qmi.readsetup), GFP_KERNEL);
-	if (!dev->qmi.readsetup) {
-		usb_free_urb(dev->qmi.readurb);
-		usb_free_urb(dev->qmi.inturb);
-		kfree(dev->qmi.readbuf);
-		kfree(dev->qmi.intbuf);
-		ERR("Error allocating setup packet buffer\n");
+	if (!dev->qmi.readbuf || !dev->qmi.intbuf || !dev->qmi.readsetup ||
+	    !dev->qmi.readurb || !dev->qmi.readurb) {
+		ERR("Error dev not allocated\n");
 		return -ENOMEM;
 	}
 
@@ -371,39 +334,27 @@ int qc_startread(struct qcusbnet *dev)
 			break;
 		}
 	}
-
+	if (dev->qmi.readurb->complete) {
+		ERR("Kill read URB in use.\n");
+		usb_kill_urb(dev->qmi.readurb);
+	}
 	usb_fill_int_urb(dev->qmi.inturb, dev->usbnet->udev,
 			 usb_rcvintpipe(dev->usbnet->udev,
 				 endpoint->desc.bEndpointAddress),
 			 dev->qmi.intbuf, DEFAULT_READ_URB_LENGTH,
 			 int_callback, dev, interval);
 
+	dev->stopped = false;
 	return usb_submit_urb(dev->qmi.inturb, GFP_KERNEL);
 }
 
 void qc_stopread(struct qcusbnet *dev)
 {
-	if (dev->qmi.readurb) {
-		VDBG("Killing read URB\n");
-		usb_kill_urb(dev->qmi.readurb);
-	}
-
+	dev->stopped = true;
 	if (dev->qmi.inturb) {
 		VDBG("Killing int URB\n");
 		usb_kill_urb(dev->qmi.inturb);
 	}
-
-	kfree(dev->qmi.readsetup);
-	dev->qmi.readsetup = NULL;
-	kfree(dev->qmi.readbuf);
-	dev->qmi.readbuf = NULL;
-	kfree(dev->qmi.intbuf);
-	dev->qmi.intbuf = NULL;
-
-	usb_free_urb(dev->qmi.readurb);
-	dev->qmi.readurb = NULL;
-	usb_free_urb(dev->qmi.inturb);
-	dev->qmi.inturb = NULL;
 }
 
 static int read_async(struct qcusbnet *dev, u16 cid, u16 tid,
@@ -1393,9 +1344,40 @@ int qc_register(struct qcusbnet *dev)
 	}
 	atomic_set(&dev->qmi.qmitid, 1);
 
+	dev->qmi.readurb = usb_alloc_urb(0, GFP_KERNEL);
+	if (!dev->qmi.readurb) {
+		ERR("Error allocating read urb\n");
+		goto fail_readurb;
+	}
+	dev->qmi.readurb->complete = NULL;
+
+	dev->qmi.inturb = usb_alloc_urb(0, GFP_KERNEL);
+	if (!dev->qmi.inturb) {
+		ERR("Error allocating int urb\n");
+		goto fail_inturb;
+	}
+
+	dev->qmi.readbuf = kmalloc(DEFAULT_READ_URB_LENGTH, GFP_KERNEL);
+	if (!dev->qmi.readbuf) {
+		ERR("Error allocating read buffer\n");
+		goto fail_readbuf;
+	}
+
+	dev->qmi.intbuf = kmalloc(DEFAULT_READ_URB_LENGTH, GFP_KERNEL);
+	if (!dev->qmi.intbuf) {
+		ERR("Error allocating int buffer\n");
+		goto fail_intbuf;
+	}
+
+	dev->qmi.readsetup = kmalloc(sizeof(*dev->qmi.readsetup), GFP_KERNEL);
+	if (!dev->qmi.readsetup) {
+		ERR("Error allocating setup packet buffer\n");
+		goto fail_readsetup;
+	}
+
 	result = qc_startread(dev);
 	if (result)
-		goto fail_start;
+		goto fail_startread;
 
 	if (!qmi_ready(dev, 20000)) {
 		ERR("Device unresponsive to QMI\n");
@@ -1456,7 +1438,21 @@ fail_cdev:
 	unregister_chrdev_region(devno, 1);
 fail_qmi:
 	qc_stopread(dev);
-fail_start:
+	if (dev->qmi.readurb) {
+		VDBG("Killing read URB\n");
+		usb_kill_urb(dev->qmi.readurb);
+	}
+fail_startread:
+	kfree(dev->qmi.readsetup);
+fail_readsetup:
+	kfree(dev->qmi.intbuf);
+fail_intbuf:
+	kfree(dev->qmi.readbuf);
+fail_readbuf:
+	usb_free_urb(dev->qmi.inturb);
+fail_inturb:
+	usb_free_urb(dev->qmi.readurb);
+fail_readurb:
 	dev->valid = false;
 	ERR("QMI Registration failed, Disconnect. State %d\n", usbdev->state);
 	if (usbdev->state != USB_STATE_NOTATTACHED)
@@ -1476,6 +1472,17 @@ void qc_deregister(struct qcusbnet *dev)
 	}
 	dev->dying = true;
 	qc_stopread(dev);
+
+	if (dev->qmi.readurb) {
+		VDBG("Killing read URB\n");
+		usb_kill_urb(dev->qmi.readurb);
+	}
+
+	kfree(dev->qmi.readsetup);
+	kfree(dev->qmi.readbuf);
+	kfree(dev->qmi.intbuf);
+	usb_free_urb(dev->qmi.readurb);
+	usb_free_urb(dev->qmi.inturb);
 
 	spin_lock_irqsave(&dev->qmi.clients_lock, flags);
 	while (!list_empty(&dev->qmi.clients)) {

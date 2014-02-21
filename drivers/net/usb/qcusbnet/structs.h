@@ -94,6 +94,7 @@ struct qcusbnet {
 	bool registered;
 	bool valid;
 	bool dying;
+	bool stopped;
 	bool dlgt_carrier_state;
 	struct mutex mutex; /* qcusbnet status mutex */
 

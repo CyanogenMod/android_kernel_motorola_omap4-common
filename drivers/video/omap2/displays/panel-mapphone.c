@@ -3837,7 +3837,7 @@ static int mapphone_panel_power_on(struct omap_dss_device *dssdev)
 	}
 #endif
 
-	if (!first_boot && !dssdev->phy.dsi.d2l_use_ulps) {
+	if (!dssdev->phy.dsi.d2l_use_ulps) {
 		if (dssdev->platform_enable) {
 			ret = dssdev->platform_enable(dssdev);
 			if (ret)

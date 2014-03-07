@@ -144,14 +144,10 @@ extern int omap4_prcm_freq_update(void);
 
 #ifdef CONFIG_PM
 extern int omap4_sar_save(void);
-extern void omap4_usb_sar_restore(void);
 extern void omap4_sar_overwrite(void);
 extern void omap4_sar_usbhost_init(u32 fck_source);
 #else
 void omap4_sar_save(void)
-{
-}
-void omap4_usb_sar_restore(void)
 {
 }
 void omap4_sar_overwrite(void)

@@ -1168,7 +1168,9 @@ static int ehci_omap_bus_resume(struct usb_hcd *hcd)
 {
 	struct device *dev = hcd->self.controller;
 	struct ehci_hcd_omap_platform_data  *pdata;
+#ifndef CONFIG_USB_OOBWAKE
 	struct omap_hwmod	*oh;
+#endif
 	struct clk *clk;
 	int i;
 
@@ -1176,9 +1178,12 @@ static int ehci_omap_bus_resume(struct usb_hcd *hcd)
 
 	dev_dbg(dev, "ehci_omap_bus_resume\n");
 
+#ifndef CONFIG_USB_OOBWAKE
 	oh = omap_hwmod_lookup(USBHS_EHCI_HWMODNAME);
 
-	ret = omap_hwmod_disable_ioring_wakeup(oh);
+	if (oh)
+		ret = omap_hwmod_disable_ioring_wakeup(oh);
+#endif
 
 	/* Re-enable any external transceiver clocks first */
 	pdata = dev->platform_data;

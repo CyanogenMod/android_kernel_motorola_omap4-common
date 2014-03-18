@@ -226,9 +226,12 @@ struct fb_bitfield {
 #define FB_VMODE_SMOOTH_XPAN	512	/* smooth xpan possible (internally used) */
 #define FB_VMODE_CONUPDATE	512	/* don't update x/yoffset	*/
 
-#define FB_FLAG_RATIO_4_3	64
-#define FB_FLAG_RATIO_16_9	128
-#define FB_FLAG_PIXEL_REPEAT	256
+#define FB_FLAG_RATIO_4_3	64	/* 0x0040 */
+#define FB_FLAG_RATIO_16_9	128	/* 0x0080 */
+#define FB_FLAG_PIXEL_REPEAT	256	/* 0x0100 */
+#define FB_FLAG_PREFERRED	512	/* 0x0200 */
+#define FB_FLAG_HW_CAPABLE	1024	/* 0x0400 */
+#define FB_FLAG_NATIVE		2048	/* 0x0800 */
 
 /*
  * Display rotation support
@@ -1003,6 +1006,7 @@ extern ssize_t fb_sys_write(struct fb_info *info, const char __user *buf,
 /* drivers/video/fbmem.c */
 extern int register_framebuffer(struct fb_info *fb_info);
 extern int unregister_framebuffer(struct fb_info *fb_info);
+extern int unlink_framebuffer(struct fb_info *fb_info);
 extern void remove_conflicting_framebuffers(struct apertures_struct *a,
 				const char *name, bool primary);
 extern int fb_prepare_logo(struct fb_info *fb_info, int rotate);

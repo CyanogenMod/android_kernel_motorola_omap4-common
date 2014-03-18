@@ -597,6 +597,7 @@ struct omap_dss_device {
 #ifdef CONFIG_PANEL_MAPPHONE_OMAP4_HDTV
 		struct {
 			u8 ds_percent; /* drive strength percentage */
+			u8 phy; /* drive strength percentage */
 		} hdmi;
 #endif
 	} phy;
@@ -646,6 +647,11 @@ struct omap_dss_device {
 
 		u32 width_in_um;
 		u32 height_in_um;
+		u16 fb_xres;
+		u16 fb_yres;
+		u32 fb_width_in_pixels;
+		u32 fb_height_in_pixels;
+		u32 hdmi_default_cea_code;
 	} panel;
 
 	struct {
@@ -656,7 +662,7 @@ struct omap_dss_device {
 	int reset_gpio;
 	int hpd_gpio;
 
-	bool skip_vm_init;
+	bool skip_init;
 
 	int max_backlight_level;
 

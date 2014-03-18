@@ -3854,7 +3854,7 @@ static int mapphone_panel_power_on(struct omap_dss_device *dssdev)
 	omapdss_dsi_vc_enable_hs(dssdev, dsi_vc_cmd, false);
 
 	if (dssdev->phy.dsi.type == OMAP_DSS_DSI_TYPE_VIDEO_MODE &&
-	    !dssdev->skip_vm_init) {
+	    !dssdev->skip_init) {
 		//do extra job to match kozio registers
 		dsi_videomode_panel_preinit(dssdev);
 		//Need to wait a certain time - Toshiba Bridge Constraint
@@ -3900,7 +3900,7 @@ static int mapphone_panel_power_on(struct omap_dss_device *dssdev)
 		ret = dsi_mipi_cm_450_720_1280_panel_enable(dssdev);
 		break;
 	case MOT_DISP_LVDS_MIPI_VM_1007_1280_800:
-		if (!dssdev->skip_vm_init)
+		if (!dssdev->skip_init)
 			ret = dsi_lvds_mipi_vm_1007_1280_800_panel_enable(dssdev);
 		break;
 	default:
@@ -3946,10 +3946,10 @@ static int mapphone_panel_power_on(struct omap_dss_device *dssdev)
 	omapdss_dsi_vc_enable_hs(dssdev, dsi_vc_cmd, true);
 
 	if (dssdev->phy.dsi.type == OMAP_DSS_DSI_TYPE_VIDEO_MODE) {
-		if (!dssdev->skip_vm_init)
+		if (!dssdev->skip_init)
 			dsi_video_mode_enable(dssdev, 0x3E);
 		else
-			dssdev->skip_vm_init = false;
+			dssdev->skip_init = false;
 	} else {
 		ret = mapphone_panel_enable_te_locked(dssdev,
 							mp_data->te_enabled);

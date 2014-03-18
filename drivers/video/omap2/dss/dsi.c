@@ -1604,7 +1604,7 @@ int dsi_pll_set_clock_div(struct platform_device *dsidev,
 	dss_feat_get_reg_field(FEAT_REG_DSIPLL_REGM_DSI, &regm_dsi_start,
 			&regm_dsi_end);
 
-	if (dsi->vc[0].dssdev->skip_vm_init)
+	if (dsi->vc[0].dssdev->skip_init)
 		return r;
 
 	/* DSI_PLL_AUTOMODE = manual */
@@ -4070,7 +4070,7 @@ static int dsi_video_proto_config(struct omap_dss_device *dssdev)
 	r = FLD_MOD(r, 1, 23, 23);	/* HSA_BLANKING */
 	dsi_write_reg(dsidev, DSI_CTRL, r);
 
-	if (!dssdev->skip_vm_init) {
+	if (!dssdev->skip_init) {
 		dsi_vc_initial_config(dsidev, 0);
 		dsi_vc_initial_config(dsidev, 1);
 		dsi_vc_initial_config(dsidev, 2);
@@ -4977,13 +4977,13 @@ static int dsi_display_init_dsi(struct omap_dss_device *dssdev)
 
 	DSSDBG("PLL OK\n");
 
-	if (!dssdev->skip_vm_init) {
+	if (!dssdev->skip_init) {
 		r = dsi_configure_dispc_clocks(dssdev);
 		if (r)
 			goto err2;
 	}
 
-	if (!dssdev->skip_vm_init) {
+	if (!dssdev->skip_init) {
 		r = dsi_cio_init(dssdev);
 		if (r)
 			goto err2;
@@ -5008,7 +5008,7 @@ static int dsi_display_init_dsi(struct omap_dss_device *dssdev)
 		goto err3;
 
 	/* enable interface */
-	if (!dssdev->skip_vm_init) {
+	if (!dssdev->skip_init) {
 		dsi_vc_enable(dsidev, 0, 1);
 		dsi_vc_enable(dsidev, 1, 1);
 		dsi_vc_enable(dsidev, 2, 1);
@@ -5100,7 +5100,7 @@ int omapdss_dsi_display_enable(struct omap_dss_device *dssdev)
 	_dsi_wait_reset(dsidev);
 #else
 	msleep(1); /* short delay for clk to be stable */
-	if (!dssdev->skip_vm_init)
+	if (!dssdev->skip_init)
 		dsi_vc_enable(dsidev, 0, 0);
 	dsi_vc_enable(dsidev, 1, 0);
 #endif

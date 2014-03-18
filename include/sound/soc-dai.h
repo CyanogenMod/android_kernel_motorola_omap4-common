@@ -180,6 +180,16 @@ struct snd_soc_dai_ops {
 	 */
 	snd_pcm_sframes_t (*delay)(struct snd_pcm_substream *,
 		struct snd_soc_dai *);
+
+	/*
+	 * For handling of DAI specific IOCTLs.  DAIs who implement this must
+	 * make certain to return -ENOIOCTLCMD if cmd is unrecognized by the
+	 * DAI's IOCTL handler.
+	 * Optional.
+	 */
+	int (*ioctl)(struct snd_pcm_substream *,
+		struct snd_soc_dai *,
+		unsigned int cmd, void *arg);
 };
 
 /*

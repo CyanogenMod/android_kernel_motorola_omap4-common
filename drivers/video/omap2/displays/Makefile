@@ -11,5 +11,5 @@ obj-$(CONFIG_PANEL_TC358765) += panel-tc358765.o
 obj-$(CONFIG_PANEL_MAPPHONE) += panel-mapphone.o
 obj-$(CONFIG_PANEL_MAPPHONE) += panel-mapphone-d2l.o
 
-obj-$(CONFIG_PANEL_MAPPHONE_OMAP4_HDTV) += panel-mapphone-hdmi.o
-obj-$(CONFIG_PANEL_MAPPHONE_OMAP4_HDTV) += panel-mapphone-hdmi_panel.o
+#obj-$(CONFIG_PANEL_MAPPHONE_OMAP4_HDTV) += panel-mapphone-hdmi.o
+#obj-$(CONFIG_PANEL_MAPPHONE_OMAP4_HDTV) += panel-mapphone-hdmi_panel.o

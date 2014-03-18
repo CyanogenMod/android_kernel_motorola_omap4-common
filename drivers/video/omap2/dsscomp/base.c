@@ -211,7 +211,9 @@ int set_dss_ovl_info(struct dss2_ovl_info *oi)
 	/* crop to screen */
 	crop.r = cfg->crop;
 	win.r = cfg->win;
+
 	vis.x = vis.y = 0;
+
 	vis.w = ovl->manager->device->panel.timings.x_res;
 	vis.h = ovl->manager->device->panel.timings.y_res;
 
@@ -219,6 +221,7 @@ int set_dss_ovl_info(struct dss2_ovl_info *oi)
 								vis.w < 2) {
 		info.enabled = false;
 		goto done;
+
 	}
 
 	/* adjust crop to UV pixel boundaries */

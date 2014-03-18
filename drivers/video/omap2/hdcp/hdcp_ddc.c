@@ -89,12 +89,9 @@ static int hdcp_start_ddc_transfer(mddc_type *mddc_cmd, u8 operation)
 	u32 i, size;
 	unsigned long flags;
 
-#ifdef CONFIG_PANEL_MAPPHONE_OMAP4_HDTV
 	u32 prev, sleeps;
-
 	prev   = 0;
 	sleeps = 0;
-#endif
 
 #ifdef _9032_AUTO_RI_
 	if (hdcp_suspend_resume_auto_ri(AUTO_RI_SUSPEND))
@@ -172,8 +169,6 @@ static int hdcp_start_ddc_transfer(mddc_type *mddc_cmd, u8 operation)
 					jiffies_to_msecs(jiffies));
 			goto ddc_error;
 		}
-
-#ifdef CONFIG_PANEL_MAPPHONE_OMAP4_HDTV
 		if (prev == i) {
 			/* The read fifo was empty or the write fifo is full,
 			 * sleep for increasingly longer times to allow the
@@ -190,7 +185,7 @@ static int hdcp_start_ddc_transfer(mddc_type *mddc_cmd, u8 operation)
 			sleeps++;
 		}
 		prev = i;
-#endif
+
 	}
 
 	if (hdcp.pending_disable)

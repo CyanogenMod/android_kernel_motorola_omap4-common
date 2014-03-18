@@ -649,10 +649,8 @@ int hdcp_lib_step1_start(void)
 
 	DBG("RX mode: %s", hdmi_mode ? "HDMI" : "DVI");
 
-#ifndef CONFIG_PANEL_MAPPHONE_OMAP4_HDTV
 	/* Set AV Mute */
 	hdcp_lib_set_av_mute(AV_MUTE_SET);
-#endif
 
 	/* Must turn encryption off when AVMUTE */
 	hdcp_lib_set_encryption(HDCP_ENC_OFF);

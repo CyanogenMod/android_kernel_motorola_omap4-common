@@ -338,6 +338,8 @@ static inline int omap_display_init(struct omap_dss_board_info *board_data)
 struct omap_display_platform_data {
 	struct omap_dss_board_info *board_data;
 	/* TODO: Additional members to be added when PM is considered */
+	int (*device_scale) (struct device *req_dev, struct device *target_dev,
+			unsigned long rate);
 };
 
 struct omap_video_timings {
@@ -386,6 +388,71 @@ struct omap_dsi_hs_mode_timing {
 	u32 tclk_trail;
 	u32 tclk_prepare;
 	u32 tclk_zero;
+};
+
+/* Please refer to CEA-861-E for detailed information about CEA-861 short audio
+ * descriptors.
+ */
+enum cea861_audio_code {
+       CEA861_AUDIO_CODE_LPCM = 1,     /* IEC 60958-3 */
+       CEA861_AUDIO_CODE_AC3 = 2,      /* ATSC A/52B */
+       CEA861_AUDIO_CODE_MPEG1 = 3,    /* ISO/IEC 11172-3 Layers 1 and 2 */
+       CEA861_AUDIO_CODE_MPEG1L3 = 4,  /* ISO/IEC 11172-3 Layer 3 */
+       CEA861_AUDIO_CODE_MPEG2 = 5,    /* ISO/IEC 13818-3 */
+       CEA861_AUDIO_CODE_AAC_LC = 6,   /* ISO/IEC 14496-3 */
+       CEA861_AUDIO_CODE_DTS = 7,      /* ETSI TS 102 114 */
+       CEA861_AUDIO_CODE_ATRAC = 8,    /* IEC 61909 */
+       CEA861_AUDIO_CODE_DSD = 9,      /* ISO/IEC 14496-3 subsection 10 */
+       CEA861_AUDIO_CODE_EAC3 = 10,    /* ATSC A/52B + Annex E */
+       CEA861_AUDIO_CODE_DTS_HD = 11,  /* Proprietary */
+       CEA861_AUDIO_CODE_MLP = 12,     /* Proprietary */
+       CEA861_AUDIO_CODE_DST = 13,     /* ISO/IEC 14496-3 subsection 10 */
+       CEA861_AUDIO_CODE_WMAPRO = 14,  /* Proprietary */
+       CEA861_AUDIO_CODE_EXTENDED = 15 /* See audio coding extension type */
+                                       /* in short audio descriptor */
+};
+
+enum cea861_audio_sample_rate {
+       CEA861_AUDIO_SR_32_KHZ = 0x01,
+       CEA861_AUDIO_SR_44DOT1_KHZ = 0x02,
+       CEA861_AUDIO_SR_48_KHZ = 0x04,
+       CEA861_AUDIO_SR_88DOT2_KHZ = 0x08,
+       CEA861_AUDIO_SR_96_KHZ = 0x10,
+       CEA861_AUDIO_SR_176DOT4_KHZ = 0x20,
+       CEA861_AUDIO_SR_192_KHZ = 0x40,
+};
+
+struct cea861_short_audio_descriptor {
+       /* Audio encoding type, see enum cea861_audio_code */
+       u8 code;
+
+       /* Bitfield of supported decoded sample rates. see enum
+        * cea861_audio_sample_rate */
+       u8 sample_rates;
+
+       /* supported maximum number of channels, or 0 if unknown. */
+       u8 max_channels;
+
+       /* see CEA-861 for detailed information.  Various pieces of information
+        * may be encoded here based on the audio code of the short audio
+        * descriptor.  This is the raw value of byte number 3 (index 2) in the
+        * short audio descriptor.
+        */
+       u8 extra_data;
+
+       /* Max bitrate in kbps.  Valid only when...
+        * (code is >= CEA861_AUDIO_CODE_AC3) &&
+        * (code is <= CEA861_AUDIO_CODE_ATRAC)
+        */
+       u32 max_bitrate;
+};
+
+#define OMAP_MAX_HDMI_AUDIO_MODES 32
+struct omap_hdmi_audio_modes {
+       u32 valid_mode_cnt;
+       int basic_audio_support;
+       struct cea861_short_audio_descriptor
+               audio_modes[OMAP_MAX_HDMI_AUDIO_MODES];
 };
 
 #ifdef CONFIG_OMAP2_DSS_VENC
@@ -597,6 +664,7 @@ struct omap_dss_device {
 #ifdef CONFIG_PANEL_MAPPHONE_OMAP4_HDTV
 		struct {
 			u8 ds_percent; /* drive strength percentage */
+			u8 phy; /* drive strength percentage */
 		} hdmi;
 #endif
 	} phy;
@@ -633,6 +701,7 @@ struct omap_dss_device {
 
 	struct {
 		struct omap_video_timings timings;
+		struct omap_hdmi_audio_modes audspecs;
 
 		int acbi;	/* ac-bias pin transitions per interrupt */
 		/* Unit: line clocks */
@@ -646,6 +715,11 @@ struct omap_dss_device {
 
 		u32 width_in_um;
 		u32 height_in_um;
+		u16 fb_xres;
+		u16 fb_yres;
+		u32 fb_width_in_pixels;
+		u32 fb_height_in_pixels;
+		u32 hdmi_default_cea_code;
 	} panel;
 
 	struct {
@@ -656,7 +730,7 @@ struct omap_dss_device {
 	int reset_gpio;
 	int hpd_gpio;
 
-	bool skip_vm_init;
+	bool skip_init;
 
 	int max_backlight_level;
 
@@ -691,6 +765,11 @@ struct omap_dss_device {
 	int (*platform_enable_hpd)(struct omap_dss_device *dssdev);
 	void (*platform_disable_hpd)(struct omap_dss_device *dssdev);
 #endif
+};
+
+struct omap_dss_hdmi_data
+{
+	int hpd_gpio;
 };
 
 struct omap_dss_driver {
@@ -770,6 +849,8 @@ struct omap_dss_driver {
 	int (*set_hdmi_mode)(struct omap_dss_device *dssdev, int code);
 	int (*set_hpd)(struct omap_dss_device *dssdev, bool enable);
 #endif
+	void (*get_fb_resolution)(struct omap_dss_device *dssdev,
+			u16 *xres, u16 *yres);
 };
 
 int omap_dss_register_driver(struct omap_dss_driver *);

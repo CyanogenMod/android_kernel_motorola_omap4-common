@@ -615,7 +615,7 @@ struct manager_cache_data {
 
 	bool cpr_enable;
 	struct omap_dss_cpr_coefs cpr_coefs;
-	bool skip_vm_init;
+	bool skip_init;
 };
 
 static struct {
@@ -1279,8 +1279,8 @@ static int configure_dispc(void)
 		 * always be turned off after frame, and new settings will be
 		 * taken in to use at next update */
 		if (!mc->manual_upd_display){
-			if (mc->skip_vm_init)
-				mc->skip_vm_init = false;
+			if (mc->skip_init)
+				mc->skip_init = false;
 			else
 				dispc_go(i);
 		}
@@ -1931,7 +1931,7 @@ static int omap_dss_mgr_apply(struct omap_overlay_manager *mgr)
 		dssdev->driver->get_update_mode(dssdev) !=
 			OMAP_DSS_UPDATE_AUTO;
 
-	mc->skip_vm_init = dssdev->skip_vm_init;
+	mc->skip_init = dssdev->skip_init;
 
 skip_mgr:
 

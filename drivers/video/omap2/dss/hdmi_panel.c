@@ -26,14 +26,22 @@
 #include <linux/module.h>
 #include <video/omapdss.h>
 #include <linux/switch.h>
+#include <linux/delay.h>
 
 #include "dss.h"
 
 #include <video/hdmi_ti_4xxx_ip.h>
 
+#define MAX_EDID_READ_ATTEMPTS 5
+
+#ifdef CONFIG_SND_SOC_OMAP_HDMI_CODEC
+extern void omap_hdmi_audio_set_plug_state(int plugged);
+#endif
+
 static struct {
 	struct mutex hdmi_lock;
 	struct switch_dev hpd_switch;
+	struct switch_dev hdmi_audio_switch;
 } hdmi;
 
 static ssize_t hdmi_deepcolor_show(struct device *dev,
@@ -56,117 +64,8 @@ static ssize_t hdmi_deepcolor_store(struct device *dev,
 	return size;
 }
 
-static ssize_t hdmi_edid_show(struct device *dev,
-		struct device_attribute *attr, char *buf)
-{
-	return omapdss_hdmi_get_edid(buf);
-}
-
-static ssize_t hdmi_s3d_mode_show(struct device *dev,
-		struct device_attribute *attr, char *buf)
-{
-	int r;
-	ssize_t size;
-	r = omapdss_hdmi_get_s3d_mode();
-	switch (r) {
-	case HDMI_FRAME_PACKING:
-		size = snprintf(buf, PAGE_SIZE, "frame_packing\n");
-		break;
-	case HDMI_FIELD_ALTERNATIVE:
-		size = snprintf(buf, PAGE_SIZE, "field_alternative\n");
-		break;
-	case HDMI_LINE_ALTERNATIVE:
-		size = snprintf(buf, PAGE_SIZE, "line_alternative\n");
-		break;
-	case HDMI_SIDE_BY_SIDE_FULL:
-		size = snprintf(buf, PAGE_SIZE, "side_by_side_full\n");
-		break;
-	case HDMI_L_DEPTH:
-		size = snprintf(buf, PAGE_SIZE, "l_depth\n");
-		break;
-	case HDMI_L_DEPTH_GFX_GFX_DEPTH:
-		size = snprintf(buf, PAGE_SIZE, "l_depth_gfx_depth\n");
-		break;
-	case HDMI_TOPBOTTOM:
-		size = snprintf(buf, PAGE_SIZE, "top_bottom\n");
-		break;
-	case HDMI_SIDE_BY_SIDE_HALF:
-		size = snprintf(buf, PAGE_SIZE, "side_by_side_half\n");
-		break;
-	default:
-		return -EINVAL;
-	}
-	return size;
-}
-
-static ssize_t hdmi_s3d_mode_store(struct device *dev,
-		struct device_attribute *attr,
-		const char *buf, size_t size)
-{
-	unsigned long s3d_mode;
-	int r = kstrtoul(buf, 0, &s3d_mode);
-	if (r)
-		return -EINVAL;
-	switch (s3d_mode) {
-	case HDMI_FRAME_PACKING:
-	case HDMI_FIELD_ALTERNATIVE:
-	case HDMI_LINE_ALTERNATIVE:
-	case HDMI_SIDE_BY_SIDE_FULL:
-	case HDMI_L_DEPTH:
-	case HDMI_L_DEPTH_GFX_GFX_DEPTH:
-	case HDMI_TOPBOTTOM:
-	case HDMI_SIDE_BY_SIDE_HALF:
-		omapdss_hdmi_set_s3d_mode(s3d_mode);
-		break;
-	default:
-		return -EINVAL;
-	}
-	return size;
-}
-
-static ssize_t hdmi_s3d_enable_store(struct device *dev,
-		struct device_attribute *attr,
-		const char *buf, size_t size)
-{
-	int enable;
-
-	int r = kstrtoint(buf, 0, &enable);
-	if (r)
-		return -EINVAL;
-	enable = !!enable;
-
-	omapdss_hdmi_enable_s3d(enable);
-
-	return size;
-}
-
-static ssize_t hdmi_s3d_enable_show(struct device *dev,
-		struct device_attribute *attr, char *buf)
-{
-	int r;
-	r = omapdss_hdmi_get_s3d_enable();
-	return snprintf(buf, PAGE_SIZE, "%d\n", r);
-}
-
-static DEVICE_ATTR(s3d_enable, S_IRUGO | S_IWUSR, hdmi_s3d_enable_show,
-							hdmi_s3d_enable_store);
-static DEVICE_ATTR(s3d_type, S_IRUGO | S_IWUSR, hdmi_s3d_mode_show,
-							hdmi_s3d_mode_store);
-static DEVICE_ATTR(edid, S_IRUGO, hdmi_edid_show, NULL);
 static DEVICE_ATTR(deepcolor, S_IRUGO | S_IWUSR, hdmi_deepcolor_show,
 							hdmi_deepcolor_store);
-
-static struct attribute *hdmi_panel_attrs[] = {
-	&dev_attr_s3d_enable.attr,
-	&dev_attr_s3d_type.attr,
-	&dev_attr_edid.attr,
-	&dev_attr_deepcolor.attr,
-	NULL,
-};
-
-static struct attribute_group hdmi_panel_attr_group = {
-	.attrs = hdmi_panel_attrs,
-};
 
 static int hdmi_panel_probe(struct omap_dss_device *dssdev)
 {
@@ -175,27 +74,16 @@ static int hdmi_panel_probe(struct omap_dss_device *dssdev)
 	dssdev->panel.config = OMAP_DSS_LCD_TFT |
 			OMAP_DSS_LCD_IVS | OMAP_DSS_LCD_IHS;
 
-	/*
-	 * Initialize the timings to 640 * 480
-	 * This is only for framebuffer update not for TV timing setting
-	 * Setting TV timing will be done only on enable
-	 */
-	dssdev->panel.timings.x_res = 640;
-	dssdev->panel.timings.y_res = 480;
-
 	/* sysfs entry to provide user space control to set deepcolor mode */
-	if (sysfs_create_group(&dssdev->dev.kobj, &hdmi_panel_attr_group))
-		DSSERR("failed to create sysfs entries\n");
+	if (device_create_file(&dssdev->dev, &dev_attr_deepcolor))
+		DSSERR("failed to create sysfs file\n");
 
-	DSSDBG("hdmi_panel_probe x_res= %d y_res = %d\n",
-		dssdev->panel.timings.x_res,
-		dssdev->panel.timings.y_res);
 	return 0;
 }
 
 static void hdmi_panel_remove(struct omap_dss_device *dssdev)
 {
-	sysfs_remove_group(&dssdev->dev.kobj, &hdmi_panel_attr_group);
+	device_remove_file(&dssdev->dev, &dev_attr_deepcolor);
 }
 
 static int hdmi_panel_enable(struct omap_dss_device *dssdev)
@@ -207,10 +95,36 @@ static int hdmi_panel_enable(struct omap_dss_device *dssdev)
 
 	if (dssdev->state != OMAP_DSS_DISPLAY_DISABLED) {
 		r = -EINVAL;
+		if (dssdev->state == OMAP_DSS_DISPLAY_ACTIVE) {
+			/* this can happen in boot during
+			 * race for hdmi to auto enable display
+			 * vs omapfb trying to enable it
+			 */
+			r = 0;
+			pr_info("%s: returning 0 because already enabled\n",
+				__func__);
+		}
 		goto err;
 	}
 
-	r = omapdss_hdmi_display_enable(dssdev);
+	if (hdmi_get_current_hpd() == 0) {
+		pr_warn("%s: returning 0 but not enabling because hpd is 0\n",
+			__func__);
+		goto err;
+	}
+
+	/* omapfb will always try to enable the driver on boot, but
+	 * we may not have read edid yet and set a mode */
+	if (dssdev->panel.timings.pixel_clock == 0) {
+		DSSWARN("%s: returning 0 but not enabling because"
+			" pixel_clock is 0\n", __func__);
+		goto err;
+	}
+	DSSINFO("%s: pixel_clock = %d, res = %d,%d\n",
+		__func__, dssdev->panel.timings.pixel_clock,
+		dssdev->panel.timings.x_res, dssdev->panel.timings.y_res);
+
+	r = omapdss_hdmi_display_enable(dssdev, true);
 	if (r) {
 		DSSERR("failed to power on\n");
 		goto err;
@@ -227,11 +141,13 @@ static void hdmi_panel_disable(struct omap_dss_device *dssdev)
 {
 	mutex_lock(&hdmi.hdmi_lock);
 
-	if (dssdev->state == OMAP_DSS_DISPLAY_ACTIVE)
+	if (dssdev->state == OMAP_DSS_DISPLAY_ACTIVE) {
+		dssdev->state = OMAP_DSS_DISPLAY_DISABLED;
+		msleep(100);
+		dssdev->manager->blank(dssdev->manager, true);
 		omapdss_hdmi_display_disable(dssdev);
-
-	dssdev->state = OMAP_DSS_DISPLAY_DISABLED;
-
+	} else
+		dssdev->state = OMAP_DSS_DISPLAY_DISABLED;
 	mutex_unlock(&hdmi.hdmi_lock);
 }
 
@@ -247,6 +163,8 @@ static int hdmi_panel_suspend(struct omap_dss_device *dssdev)
 	}
 
 	dssdev->state = OMAP_DSS_DISPLAY_SUSPENDED;
+
+	hdmi_panel_hpd_handler();
 
 	omapdss_hdmi_display_disable(dssdev);
 err:
@@ -270,28 +188,76 @@ static int hdmi_panel_resume(struct omap_dss_device *dssdev)
 err:
 	mutex_unlock(&hdmi.hdmi_lock);
 
-	hdmi_panel_hpd_handler(hdmi_get_current_hpd());
+	hdmi_panel_hpd_handler();
 
 	return r;
 }
 
 enum {
-	HPD_STATE_OFF,
-	HPD_STATE_START,
-	HPD_STATE_EDID_TRYLAST = HPD_STATE_START + 5,
+	HPD_STATE_RESET,
+	HPD_STATE_CHECK_PLUG_STATE,
+	HPD_STATE_CHECK_EDID,
+	HPD_STATE_DONE_ENABLED,
+	HPD_STATE_DONE_DISABLED,
 };
 
+static DEFINE_SPINLOCK(hpd_state_lock);
 static struct hpd_worker_data {
 	struct delayed_work dwork;
-	atomic_t state;
+	int state;
+	int edid_reads;
 } hpd_work;
 static struct workqueue_struct *my_workq;
+
+static int hdmi_hpd_set_state(int target_state, int resched_time) {
+	unsigned long flags;
+	int ret = 0;
+	spin_lock_irqsave(&hpd_state_lock, flags);
+
+	/* If the state machine is attempting to advance to anything past
+	 * CHECK_PLUG_STATE, but we are currently in the RESET state, then we
+	 * must have been reset by an HPD IRQ while conducting some long running
+	 * operation in the worker callback.  There should already be another
+	 * worker callback in flight, so we should do nothing and just get out
+	 * of the pending callback's way.
+	 */
+	if ((hpd_work.state == HPD_STATE_RESET) &&
+		(target_state >= HPD_STATE_CHECK_EDID)) {
+		ret = -1;
+		goto done;
+	}
+
+	if (target_state == HPD_STATE_RESET)
+		hdmi_set_edid_state(false);
+
+	__cancel_delayed_work(&hpd_work.dwork);
+	hpd_work.state = target_state;
+	if (resched_time >= 0)
+		queue_delayed_work(my_workq,
+				&hpd_work.dwork,
+				msecs_to_jiffies(resched_time));
+
+done:
+	spin_unlock_irqrestore(&hpd_state_lock, flags);
+	return ret;
+}
+
+static int hdmi_hpd_get_state(void) {
+	unsigned long flags;
+	int ret;
+
+	spin_lock_irqsave(&hpd_state_lock, flags);
+	ret = hpd_work.state;
+	spin_unlock_irqrestore(&hpd_state_lock, flags);
+
+	return ret;
+}
 
 static void hdmi_hotplug_detect_worker(struct work_struct *work)
 {
 	struct hpd_worker_data *d = container_of(work, typeof(*d), dwork.work);
 	struct omap_dss_device *dssdev = NULL;
-	int state = atomic_read(&d->state);
+	int state;
 
 	int match(struct omap_dss_device *dssdev, void *arg)
 	{
@@ -299,58 +265,146 @@ static void hdmi_hotplug_detect_worker(struct work_struct *work)
 	}
 	dssdev = omap_dss_find_device(NULL, match);
 
-	pr_err("in hpd work %d, state=%d\n", state, dssdev->state);
 	if (dssdev == NULL)
 		return;
 
 	mutex_lock(&hdmi.hdmi_lock);
-	if (state == HPD_STATE_OFF) {
+
+	state = hdmi_hpd_get_state();
+	pr_info("in hpd work state %d, dssdev state %d, hpd state %d\n",
+			state, dssdev->state, hdmi_get_current_hpd());
+
+	switch (state) {
+	case HPD_STATE_RESET:
+		/* Were we just reset?  If so, shut everything down, then
+		 * schedule a check of the plug state in the near future.
+		 */
+#ifdef CONFIG_SND_SOC_OMAP_HDMI_CODEC
+		omap_hdmi_audio_set_plug_state(0);
+#endif
+		switch_set_state(&hdmi.hdmi_audio_switch, 0);
 		switch_set_state(&hdmi.hpd_switch, 0);
+		memset(&dssdev->panel.audspecs, 0,
+				sizeof(dssdev->panel.audspecs));
 		if (dssdev->state == OMAP_DSS_DISPLAY_ACTIVE) {
 			mutex_unlock(&hdmi.hdmi_lock);
 			dssdev->driver->disable(dssdev);
-			omapdss_hdmi_enable_s3d(false);
 			mutex_lock(&hdmi.hdmi_lock);
+		} else {
+			/*
+			 * We could have enabled during edid
+			 * read phase so call disable directly
+			 * bypassing the notifications.  if
+			 * we're already disabled, this will
+			 * be a noop.
+			 */
+			omapdss_hdmi_display_disable(dssdev);
 		}
-		goto done;
-	} else {
-		if (state == HPD_STATE_START) {
+
+		hdmi_hpd_set_state(HPD_STATE_CHECK_PLUG_STATE, 60);
+		break;
+
+	case HPD_STATE_CHECK_PLUG_STATE:
+		if (hdmi_get_current_hpd()) {
+			/* Looks like there is something plugged in.
+			 * Enable the DSS driver and get ready to read the
+			 * sink's EDID information.
+			 */
+			hpd_work.edid_reads = 0;
+
+			/*
+			 * Just turn on power to hdmi so we can
+			 * read edid, but don't turn on the
+			 * display yet.
+			 */
+			omapdss_hdmi_display_enable(dssdev, false);
+
+			hdmi_hpd_set_state(HPD_STATE_CHECK_EDID, 60);
+		} else {
+			/* nothing plugged in, so we are finished.  Go
+			 * to the DONE_DISABLED state and stay
+			 * there until the next HPD event. */
+			goto end_disabled;
+		}
+		break;
+
+	case HPD_STATE_CHECK_EDID:
+		if (hdmi_get_current_hpd() == 0) {
+			/* hpd dropped - stop EDID read */
+			pr_info("hpd == 0, aborting EDID read\n");
+			goto end_disabled;
+		}
+
+		if (!hdmi_read_edid(&dssdev->panel.timings)) {
+			/* Failed to read EDID.  If we still have retry attempts
+			 * left, schedule another attempt.  Otherwise give up
+			 * and just go to the disabled state.
+			 */
+			hpd_work.edid_reads++;
+			if (hpd_work.edid_reads >= MAX_EDID_READ_ATTEMPTS) {
+				pr_info("Failed to read EDID after %d times."
+				        " Giving up.\n", hpd_work.edid_reads);
+				goto end_disabled;
+			} else {
+				hdmi_hpd_set_state(HPD_STATE_CHECK_EDID, 60);
+			}
+			break;
+		}
+
+		/* get monspecs from edid */
+		hdmi_get_monspecs(&dssdev->panel.monspecs);
+
+		/* get audio support from edid */
+		hdmi_get_audspecs(&dssdev->panel.audspecs);
+
+		pr_info("panel size %d by %d\n",
+				dssdev->panel.monspecs.max_x,
+				dssdev->panel.monspecs.max_y);
+		dssdev->panel.width_in_um =
+				dssdev->panel.monspecs.max_x * 10000;
+		dssdev->panel.height_in_um =
+				dssdev->panel.monspecs.max_y * 10000;
+
+		/* Finally, if we have not already been reset by another hot
+		 * plug event, set the switch which informs the user mode code
+		 * that we are plugged and ready to have our video mode
+		 * configured.
+		 */
+		if (!hdmi_hpd_set_state(HPD_STATE_DONE_ENABLED, -1)) {
 			mutex_unlock(&hdmi.hdmi_lock);
-			dssdev->driver->enable(dssdev);
-			mutex_lock(&hdmi.hdmi_lock);
-		} else if (dssdev->state != OMAP_DSS_DISPLAY_ACTIVE ||
-			   hdmi.hpd_switch.state) {
-			/* powered down after enable - skip EDID read */
-			goto done;
-		} else if (hdmi_read_edid(&dssdev->panel.timings)) {
-			/* get monspecs from edid */
-			hdmi_get_monspecs(&dssdev->panel.monspecs);
-			pr_info("panel size %d by %d\n",
-					dssdev->panel.monspecs.max_x,
-					dssdev->panel.monspecs.max_y);
-			dssdev->panel.width_in_um =
-					dssdev->panel.monspecs.max_x * 10000;
-			dssdev->panel.height_in_um =
-					dssdev->panel.monspecs.max_y * 10000;
+			/* set and enable an initial video mode
+			 * because some monitors don't like it if
+			 * we delay this too long and who knows when
+			 * usermode will do this (especially in factory
+			 * setting).
+			 */
+			omapdss_hdmi_display_set_initial_mode(dssdev);
 			switch_set_state(&hdmi.hpd_switch, 1);
-			goto done;
-		} else if (state == HPD_STATE_EDID_TRYLAST){
-			pr_info("Failed to read EDID after %d times. Giving up.", state - HPD_STATE_START);
-			goto done;
+			return;
 		}
-		if (atomic_add_unless(&d->state, 1, HPD_STATE_OFF))
-			queue_delayed_work(my_workq, &d->dwork, msecs_to_jiffies(60));
+
+		break;
+
+	default:
+		/* We should not have scheduled work in any other states.  Log a
+		 * warning and ignore the work. */
+		pr_warn("HPD worker scheduled unexpected state %d",
+				hpd_work.state);
+		break;
 	}
-done:
+
+	mutex_unlock(&hdmi.hdmi_lock);
+	return;
+
+end_disabled:
+	omapdss_hdmi_display_disable(dssdev);
+	hdmi_hpd_set_state(HPD_STATE_DONE_DISABLED, -1);
 	mutex_unlock(&hdmi.hdmi_lock);
 }
 
-int hdmi_panel_hpd_handler(int hpd)
+void hdmi_panel_hpd_handler(void)
 {
-	__cancel_delayed_work(&hpd_work.dwork);
-	atomic_set(&hpd_work.state, hpd ? HPD_STATE_START : HPD_STATE_OFF);
-	queue_delayed_work(my_workq, &hpd_work.dwork, msecs_to_jiffies(hpd ? 40 : 30));
-	return 0;
+	hdmi_hpd_set_state(HPD_STATE_RESET, 40);
 }
 
 static void hdmi_get_timings(struct omap_dss_device *dssdev,
@@ -358,7 +412,16 @@ static void hdmi_get_timings(struct omap_dss_device *dssdev,
 {
 	mutex_lock(&hdmi.hdmi_lock);
 
-	*timings = dssdev->panel.timings;
+	/* we don't have timings on boot if no hdmi
+	 * connected, but surface flinger crashes if
+	 * we don't return something non-zero.
+	 */
+	if (dssdev->panel.timings.x_res == 0) {
+		DSSINFO("no timings yet, returning some safe defaults\n");
+		*timings = (struct omap_video_timings)
+			{640, 480, 31746, 128, 24, 29, 9, 40, 2};
+	} else
+		*timings = dssdev->panel.timings;
 
 	mutex_unlock(&hdmi.hdmi_lock);
 }
@@ -406,6 +469,88 @@ static int hdmi_get_modedb(struct omap_dss_device *dssdev,
 	memcpy(modedb, specs->modedb, sizeof(*modedb) * modedb_len);
 	return modedb_len;
 }
+static void hdmi_get_resolution(struct omap_dss_device *dssdev,
+			       u16 *xres, u16 *yres)
+{
+	/*
+	 * Initialize the timings to 640 * 480
+	 * This is only for framebuffer update not for TV timing setting
+	 * Setting TV timing will be done only on enable
+	 */
+	if (dssdev->panel.timings.x_res == 0) {
+		*xres = 640;
+		*yres = 480;
+	} else {
+		*xres = dssdev->panel.timings.x_res;
+		*yres = dssdev->panel.timings.y_res;
+	}
+}
+
+static void hdmi_get_fb_resolution(struct omap_dss_device *dssdev,
+			       u16 *xres, u16 *yres)
+{
+	if (dssdev->panel.fb_width_in_pixels == 0) {
+		*xres = 640;
+		*yres = 480;
+	} else {
+		*xres = dssdev->panel.fb_width_in_pixels;
+		*yres = dssdev->panel.fb_height_in_pixels;
+	}
+}
+
+
+
+static int hdmi_set_mode(struct omap_dss_device *dssdev,
+			 struct fb_videomode *vm)
+{
+	int ret;
+
+	/* Reject any set mode request if edid hasn't been
+	 * read (or has been lost).  Bouncing hpd could cause
+	 * this call to happen when the hpd state machine
+	 * is still running handling a new hdp->1 case, and
+	 * the disable of the driver that setting the mode
+	 * requires could cause the edid read to fail.
+	 */
+	if (hdmi_hpd_get_state() != HPD_STATE_DONE_ENABLED)
+		return -ENODEV;
+
+	ret = omapdss_hdmi_display_set_mode(dssdev, vm);
+
+	mutex_lock(&hdmi.hdmi_lock);
+
+	/* if we succeeded in setting our display mode, and our display is
+	 * active, and our edid reports that we have support for any audio modes
+	 * at all, then signal that fact to the user mode level of code.
+	 *
+	 * TODO: There is still a lot about audio support which could be made
+	 * better.  For example, the audio driver does not bother to ask which
+	 * audio modes are supported when deciding to enable or not.  In fact,
+	 * it only checks to see if the selected video mode is an "hdmi video
+	 * mode" or not.  Its possible for an HDMI panel to accept a VESA/DVI
+	 * video mode and still support audio.  Likewise, just because a panel
+	 * is using HDMI does not mean that the panel must support audio.
+	 * Finally, just because the panel supports a particular audio mode does
+	 * not mean that the mode can be driven at all times.  Some high bitrate
+	 * audio modes can only be supported if the chosen pixel clock is high
+	 * enough.  All of these factors should be taken into account by the
+	 * HDMI audio driver when it decides which audio modes are allowed and
+	 * which ones are not.  Currently none of this is taken into account.
+	 */
+	if (!ret &&
+	   (dssdev->state == OMAP_DSS_DISPLAY_ACTIVE) &&
+	   (dssdev->panel.audspecs.basic_audio_support ||
+	    dssdev->panel.audspecs.valid_mode_cnt)) {
+#ifdef CONFIG_SND_SOC_OMAP_HDMI_CODEC
+		omap_hdmi_audio_set_plug_state(1);
+#endif
+		switch_set_state(&hdmi.hdmi_audio_switch, 1);
+	}
+
+	mutex_unlock(&hdmi.hdmi_lock);
+
+	return ret;
+}
 
 static struct omap_dss_driver hdmi_driver = {
 	.probe		= hdmi_panel_probe,
@@ -417,8 +562,10 @@ static struct omap_dss_driver hdmi_driver = {
 	.get_timings	= hdmi_get_timings,
 	.set_timings	= hdmi_set_timings,
 	.check_timings	= hdmi_check_timings,
+	.get_resolution = hdmi_get_resolution,
+	.get_fb_resolution = hdmi_get_fb_resolution,
 	.get_modedb	= hdmi_get_modedb,
-	.set_mode	= omapdss_hdmi_display_set_mode,
+	.set_mode	= hdmi_set_mode,
 	.driver			= {
 		.name   = "hdmi_panel",
 		.owner  = THIS_MODULE,
@@ -428,13 +575,21 @@ static struct omap_dss_driver hdmi_driver = {
 int hdmi_panel_init(void)
 {
 	mutex_init(&hdmi.hdmi_lock);
+
 	hdmi.hpd_switch.name = "hdmi";
 	switch_dev_register(&hdmi.hpd_switch);
+
+	hdmi.hdmi_audio_switch.name = "hdmi_audio";
+	switch_dev_register(&hdmi.hdmi_audio_switch);
 
 	my_workq = create_singlethread_workqueue("hdmi_hotplug");
 	INIT_DELAYED_WORK(&hpd_work.dwork, hdmi_hotplug_detect_worker);
 	omap_dss_register_driver(&hdmi_driver);
 
+	/*
+	 * Defer checking plugged in hpd state until
+	 * hdcp firmware has been loaded.
+	 */
 	return 0;
 }
 
@@ -444,4 +599,5 @@ void hdmi_panel_exit(void)
 	omap_dss_unregister_driver(&hdmi_driver);
 
 	switch_dev_unregister(&hdmi.hpd_switch);
+	switch_dev_unregister(&hdmi.hdmi_audio_switch);
 }

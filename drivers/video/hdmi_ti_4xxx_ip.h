@@ -114,7 +114,7 @@ struct hdmi_reg { u16 idx; };
 #define HDMI_CORE_AV_AUD_DBYTE_NELEMS		HDMI_CORE_AV_REG(10)
 #define HDMI_CORE_AV_MPEG_DBYTE		HDMI_CORE_AV_REG(0x290)
 #define HDMI_CORE_AV_MPEG_DBYTE_NELEMS		HDMI_CORE_AV_REG(27)
-#define HDMI_CORE_AV_GEN_DBYTE(n)		HDMI_CORE_AV_REG(n * 4 + 0x300)
+#define HDMI_CORE_AV_GEN_DBYTE			HDMI_CORE_AV_REG(0x300)
 #define HDMI_CORE_AV_GEN_DBYTE_NELEMS		HDMI_CORE_AV_REG(31)
 #define HDMI_CORE_AV_GEN2_DBYTE		HDMI_CORE_AV_REG(0x380)
 #define HDMI_CORE_AV_GEN2_DBYTE_NELEMS		HDMI_CORE_AV_REG(31)
@@ -341,10 +341,5 @@ struct hdmi_video_interface {
 	int	interlacing;
 	int	tm;	/* Timing mode */
 };
-
-#ifdef CONFIG_OMAP_HDMI_AUDIO_WA
-int hdmi_lib_start_acr_wa(int);
-int hdmi_lib_stop_acr_wa(void);
-#endif
 
 #endif

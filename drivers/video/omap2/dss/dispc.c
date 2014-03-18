@@ -42,7 +42,6 @@
 #include <mach/tiler.h>
 #include <plat/omap-pm.h>
 #include <video/omapdss.h>
-#include <../mach-omap2/powerdomain.h>
 
 #include "../clockdomain.h"
 #include "dss.h"
@@ -588,7 +587,6 @@ err_dss_get:
 
 void dispc_runtime_put(void)
 {
-	struct powerdomain *dss_powerdomain = pwrdm_lookup("dss_pwrdm");
 	mutex_lock(&dispc.runtime_lock);
 
 	if (--dispc.runtime_count == 0) {
@@ -597,14 +595,6 @@ void dispc_runtime_put(void)
 		DSSDBG("dispc_runtime_put\n");
 
 		dispc_save_context();
-
-		/* Sets DSS max latency constraint
-		 * * (allowing for deeper power state)
-		 * */
-		omap_pm_set_max_dev_wakeup_lat(
-				&dispc.pdev->dev,
-				&dispc.pdev->dev,
-				dss_powerdomain->wakeup_lat[PWRDM_FUNC_PWRST_OFF]);
 
 		r = pm_runtime_put_sync(&dispc.pdev->dev);
 		WARN_ON(r);
@@ -632,22 +622,6 @@ void dispc_runtime_put(void)
 bool dispc_go_busy(enum omap_channel channel)
 {
 	int bit;
-	bool enable_bit, go_bit = false;
-
-	if (channel == OMAP_DSS_CHANNEL_LCD ||
-			channel == OMAP_DSS_CHANNEL_LCD2)
-		bit = 0; /* LCDENABLE */
-	else
-		bit = 1; /* DIGITALENABLE */
-
-	/* if the channel is not enabled, we don't need GO */
-	if (channel == OMAP_DSS_CHANNEL_LCD2)
-		enable_bit = REG_GET(DISPC_CONTROL2, bit, bit) == 1;
-	else
-		enable_bit = REG_GET(DISPC_CONTROL, bit, bit) == 1;
-
-	if (!enable_bit)
-		goto end;
 
 	if (channel == OMAP_DSS_CHANNEL_LCD ||
 			channel == OMAP_DSS_CHANNEL_LCD2)
@@ -656,12 +630,9 @@ bool dispc_go_busy(enum omap_channel channel)
 		bit = 6; /* GODIGIT */
 
 	if (channel == OMAP_DSS_CHANNEL_LCD2)
-		go_bit = REG_GET(DISPC_CONTROL2, bit, bit) == 1;
+		return REG_GET(DISPC_CONTROL2, bit, bit) == 1;
 	else
-		go_bit = REG_GET(DISPC_CONTROL, bit, bit) == 1;
-
-end:
-	return go_bit;
+		return REG_GET(DISPC_CONTROL, bit, bit) == 1;
 }
 
 void dispc_go(enum omap_channel channel)
@@ -1509,8 +1480,9 @@ static void _dispc_set_scaling_common(enum omap_plane plane,
 	int accu0 = 0;
 	int accu1 = 0;
 	u32 l;
+	u16 y_adjust = color_mode == OMAP_DSS_COLOR_NV12 ? 2 : 0;
 
-	_dispc_set_scale_param(plane, orig_width, orig_height,
+	_dispc_set_scale_param(plane, orig_width, orig_height - y_adjust,
 				out_width, out_height, five_taps,
 				rotation, DISPC_COLOR_COMPONENT_RGB_Y);
 	l = dispc_read_reg(DISPC_OVL_ATTRIBUTES(plane));
@@ -1562,6 +1534,7 @@ static void _dispc_set_scaling_uv(enum omap_plane plane,
 {
 	int scale_x = out_width != orig_width;
 	int scale_y = out_height != orig_height;
+	u16 y_adjust = 0;
 
 	if (!dss_has_feature(FEAT_HANDLE_UV_SEPARATE))
 		return;
@@ -1578,6 +1551,7 @@ static void _dispc_set_scaling_uv(enum omap_plane plane,
 		orig_height >>= 1;
 		/* UV is subsampled by 2 horz.*/
 		orig_width >>= 1;
+		y_adjust = 1;
 		break;
 	case OMAP_DSS_COLOR_YUV2:
 	case OMAP_DSS_COLOR_UYVY:
@@ -1601,7 +1575,7 @@ static void _dispc_set_scaling_uv(enum omap_plane plane,
 	if (out_height != orig_height)
 		scale_y = true;
 
-	_dispc_set_scale_param(plane, orig_width, orig_height,
+	_dispc_set_scale_param(plane, orig_width, orig_height - y_adjust,
 			out_width, out_height, five_taps,
 				rotation, DISPC_COLOR_COMPONENT_UV);
 
@@ -1686,9 +1660,6 @@ static void _dispc_set_rotation_attrs(enum omap_plane plane, u8 rotation,
 			row_repeat = true;
 		else
 			row_repeat = false;
-	} else if (color_mode == OMAP_DSS_COLOR_NV12) {
-		/* WA for OMAP4+ UV plane overread HW bug */
-		vidrot = 1;
 	}
 
 	REG_FLD_MOD(DISPC_OVL_ATTRIBUTES(plane), vidrot, 13, 12);
@@ -2471,10 +2442,18 @@ int dispc_setup_plane(enum omap_plane plane,
 	_dispc_setup_global_alpha(plane, global_alpha);
 
 	if (cpu_is_omap44xx()) {
+#if !defined(CONFIG_OMAP2_HDMI_DEFAULT_DISPLAY)
 		fifo_low = dispc_calculate_threshold(plane, paddr + offset0,
 				   puv_addr + offset0, width, height,
 				   row_inc, pix_inc);
 		fifo_high = dispc_get_plane_fifo_size(plane) - 1;
+#else
+		u32 size;
+		size = dispc_get_plane_fifo_size(plane);
+
+		default_get_overlay_fifo_thresholds(plane, size,
+				&size, &fifo_low, &fifo_high);
+#endif
 		dispc_setup_plane_fifo(plane, fifo_low, fifo_high);
 	}
 
@@ -2644,11 +2623,10 @@ void dispc_enable_channel(enum omap_channel channel,
 		enum omap_display_type type, bool enable)
 {
 	if (channel == OMAP_DSS_CHANNEL_LCD ||
-			channel == OMAP_DSS_CHANNEL_LCD2) {
+			channel == OMAP_DSS_CHANNEL_LCD2)
 		dispc_enable_lcd_out(channel, enable);
-	} else if (channel == OMAP_DSS_CHANNEL_DIGIT) {
+	else if (channel == OMAP_DSS_CHANNEL_DIGIT)
 		dispc_enable_digit_out(type, enable);
-	}
 	else
 		BUG();
 }
@@ -4059,21 +4037,6 @@ static void _omap_dispc_initial_config(void)
 	dispc_read_plane_fifo_sizes();
 }
 
-void dispc_cleanup_irq(void)
-{
-	/*
-	 * This is called in dispc probe function
-	 * before requesting irq
-	 */
-
-	/*Disable all interrupts */
-	dispc_write_reg(DISPC_IRQENABLE, 0x0);
-
-	/*Clear interrupts if any */
-	dispc_write_reg(DISPC_IRQSTATUS, 0xffffffff);
-
-}
-
 /* DISPC HW IP initialisation */
 static int omap_dispchw_probe(struct platform_device *pdev)
 {
@@ -4120,15 +4083,6 @@ static int omap_dispchw_probe(struct platform_device *pdev)
 		r = -ENODEV;
 		goto err_irq;
 	}
-
-	/*
-	 * Need to disable DISPC_IRQ  and clear DISPC_IRQSTATUS here,
-	 * so no irqs are deliverd before the dsi block is fully
-	 * initialzed -- this will be needed if bootloader initialized
-	 * DSS already and interrupt are enabled.
-	 */
-	if (cpu_is_omap44xx())
-		dispc_cleanup_irq();
 
 	r = request_irq(dispc.irq, omap_dispc_irq_handler, IRQF_SHARED,
 		"OMAP DISPC", dispc.pdev);

@@ -59,10 +59,13 @@ static struct pm_qos_request_list pm_qos_handle;
 #define EDID_TIMING_DESCRIPTOR_SIZE		0x12
 #define EDID_DESCRIPTOR_BLOCK0_ADDRESS		0x36
 #define EDID_DESCRIPTOR_BLOCK1_ADDRESS		0x80
+#define EDID_HDMI_VENDOR_SPECIFIC_DATA_BLOCK	128
 #define EDID_SIZE_BLOCK0_TIMING_DESCRIPTOR	4
 #define EDID_SIZE_BLOCK1_TIMING_DESCRIPTOR	4
 
 #define OMAP_HDMI_TIMINGS_NB			34
+#define HDMI_DEFAULT_REGN 15
+#define HDMI_DEFAULT_REGM2 1
 
 static struct {
 	struct mutex lock;
@@ -79,7 +82,10 @@ static struct {
 	bool custom_set;
 	enum hdmi_deep_color_mode deep_color;
 	struct hdmi_config cfg;
+// stargo - regulator handled in board-mapphone-panel
+#if 0
 	struct regulator *hdmi_reg;
+#endif
 
 	int hdmi_irq;
 	struct clk *sys_clk;
@@ -92,10 +98,13 @@ static struct {
 
 	u8 s3d_mode;
 	bool s3d_enable;
-
+	int source_physical_address;
 	void (*hdmi_start_frame_cb)(void);
 	void (*hdmi_irq_cb)(int);
 	bool (*hdmi_power_on_cb)(void);
+	void (*hdmi_cec_enable_cb)(int status);
+	void (*hdmi_cec_irq_cb)(void);
+	void (*hdmi_cec_hpd)(int phy_addr, int status);
 } hdmi;
 
 static const u8 edid_header[8] = {0x0, 0xff, 0xff, 0xff, 0xff, 0xff, 0xff, 0x0};
@@ -262,6 +271,39 @@ void hdmi_get_monspecs(struct fb_monspecs *specs)
 		specs->modedb[j++] = specs->modedb[i];
 	}
 	specs->modedb_len = j;
+
+	/* Find out the Source Physical address for the CEC
+	CEC physical address will be part of VSD block from
+	TV Physical address is 2 bytes after 24 bit IEEE
+	registration identifier (0x000C03)
+	*/
+	i = EDID_HDMI_VENDOR_SPECIFIC_DATA_BLOCK;
+	while (i < (HDMI_EDID_MAX_LENGTH - 5)) {
+		if ((edid[i] == 0x03) && (edid[i+1] == 0x0c) &&
+			(edid[i+2] == 0x00)) {
+			hdmi.source_physical_address = (edid[i+3] << 8) |
+				edid[i+4];
+			break;
+		}
+		i++;
+
+	}
+}
+
+void hdmi_inform_hpd_to_cec(int status)
+{
+	if (!status)
+		hdmi.source_physical_address = 0;
+
+	if (hdmi.hdmi_cec_hpd)
+		(*hdmi.hdmi_cec_hpd)(hdmi.source_physical_address,
+			status);
+}
+
+void hdmi_inform_power_on_to_cec(int status)
+{
+	if (hdmi.hdmi_cec_enable_cb)
+		(*hdmi.hdmi_cec_enable_cb)(status);
 }
 
 u8 *hdmi_read_edid(struct omap_video_timings *dp)
@@ -309,7 +351,11 @@ static void hdmi_compute_pll(struct omap_dss_device *dssdev, int phy,
 	 * Input clock is predivided by N + 1
 	 * out put of which is reference clk
 	 */
-	pi->regn = dssdev->clocks.hdmi.regn;
+	if (dssdev->clocks.hdmi.regn == 0)
+		pi->regn = HDMI_DEFAULT_REGN;
+	else
+		pi->regn = dssdev->clocks.hdmi.regn;
+
 	refclk = clkin / (pi->regn + 1);
 
 	/*
@@ -317,7 +363,11 @@ static void hdmi_compute_pll(struct omap_dss_device *dssdev, int phy,
 	 * Multiplying by 100 to avoid fractional part removal
 	 */
 	pi->regm = (phy * 100 / (refclk)) / 100;
-	pi->regm2 = dssdev->clocks.hdmi.regm2;
+
+	if (dssdev->clocks.hdmi.regm2 == 0)
+		pi->regm2 = HDMI_DEFAULT_REGM2;
+	else
+		pi->regm2 = dssdev->clocks.hdmi.regm2;
 
 	/*
 	 * fractional multiplier is remainder of the difference between
@@ -368,6 +418,7 @@ static void hdmi_load_hdcp_keys(struct omap_dss_device *dssdev)
 	}
 
 }
+
 /* Set / Release c-state constraints */
 static void hdmi_set_l3_cstr(struct omap_dss_device *dssdev, bool enable)
 {
@@ -411,8 +462,16 @@ static int hdmi_power_on(struct omap_dss_device *dssdev)
 		dssdev->panel.timings.y_res);
 
 	if (!hdmi.custom_set) {
-		struct fb_videomode vesa_vga = vesa_modes[4];
-		hdmi_set_timings(&vesa_vga, false);
+		u32 cea_code = 0;
+		struct fb_videomode default_mode;
+
+		cea_code = dssdev->panel.hdmi_default_cea_code;
+		if (cea_code > 0 && cea_code < CEA_MODEDB_SIZE)
+			default_mode = cea_modes[cea_code];
+		else
+			default_mode = vesa_modes[4];
+
+		hdmi_set_timings(&default_mode, false);
 	}
 
 	omapfb_fb2dss_timings(&hdmi.cfg.timings, &dssdev->panel.timings);
@@ -449,7 +508,7 @@ static int hdmi_power_on(struct omap_dss_device *dssdev)
 		goto err;
 	}
 
-	r = hdmi_ti_4xxx_phy_init(&hdmi.hdmi_data);
+	r = hdmi_ti_4xxx_phy_init(&hdmi.hdmi_data, phy);
 	if (r) {
 		DSSDBG("Failed to start PHY\n");
 		goto err;
@@ -502,13 +561,18 @@ err:
 
 static void hdmi_power_off(struct omap_dss_device *dssdev)
 {
+	enum hdmi_pwrchg_reasons reason = HDMI_PWRCHG_DEFAULT;
 	if (hdmi.hdmi_irq_cb)
 		hdmi.hdmi_irq_cb(HDMI_HPD_LOW);
 
 	hdmi_ti_4xxx_wp_video_start(&hdmi.hdmi_data, 0);
 
 	dispc_enable_channel(OMAP_DSS_CHANNEL_DIGIT, dssdev->type, 0);
-	hdmi_ti_4xxx_phy_off(&hdmi.hdmi_data, hdmi.set_mode);
+	if (hdmi.set_mode)
+		reason = reason | HDMI_PWRCHG_MODE_CHANGE;
+	if (dssdev->sync_lost_error)
+		reason = reason | HDMI_PWRCHG_RESYNC;
+	hdmi_ti_4xxx_phy_off(&hdmi.hdmi_data, reason);
 	hdmi_ti_4xxx_set_pll_pwr(&hdmi.hdmi_data, HDMI_PLLPWRCMD_ALLOFF);
 	hdmi_set_l3_cstr(dssdev, false);
 	hdmi_runtime_put();
@@ -537,6 +601,25 @@ int omapdss_hdmi_register_hdcp_callbacks(void (*hdmi_start_frame_cb)(void),
 }
 EXPORT_SYMBOL(omapdss_hdmi_register_hdcp_callbacks);
 
+int omapdss_hdmi_register_cec_callbacks(void (*hdmi_cec_enable_cb)(int status),
+					void (*hdmi_cec_irq_cb)(void),
+					void (*hdmi_cec_hpd)(int phy_addr,
+						int status))
+{
+	hdmi.hdmi_cec_enable_cb = hdmi_cec_enable_cb;
+	hdmi.hdmi_cec_irq_cb = hdmi_cec_irq_cb;
+	hdmi.hdmi_cec_hpd = hdmi_cec_hpd;
+	return 0;
+}
+EXPORT_SYMBOL(omapdss_hdmi_register_cec_callbacks);
+
+int omapdss_hdmi_unregister_cec_callbacks(void)
+{
+	hdmi.hdmi_cec_enable_cb = NULL;
+	hdmi.hdmi_cec_irq_cb = NULL;
+	hdmi.hdmi_cec_hpd = NULL;
+	return 0;
+}
 void omapdss_hdmi_set_deepcolor(int val)
 {
 	hdmi.deep_color = val;
@@ -598,6 +681,9 @@ static irqreturn_t hdmi_irq_handler(int irq, void *arg)
 	r = hdmi_ti_4xxx_irq_handler(&hdmi.hdmi_data);
 
 	DSSDBG("Received HDMI IRQ = %08x\n", r);
+
+	if (hdmi.hdmi_cec_irq_cb && (r & HDMI_CEC_INT))
+		hdmi.hdmi_cec_irq_cb();
 
 	if (hdmi.hdmi_irq_cb)
 		hdmi.hdmi_irq_cb(r);
@@ -678,6 +764,8 @@ int omapdss_hdmi_display_enable(struct omap_dss_device *dssdev)
 		}
 	}
 
+// stargo - regulator handled in board-mapphone-panel
+#if 0
 	hdmi.hdmi_reg = regulator_get(NULL, "hdmi_vref");
 	if (IS_ERR_OR_NULL(hdmi.hdmi_reg)) {
 		DSSERR("Failed to get hdmi_vref regulator\n");
@@ -690,6 +778,7 @@ int omapdss_hdmi_display_enable(struct omap_dss_device *dssdev)
 		DSSERR("failed to enable hdmi_vref regulator\n");
 		goto err3;
 	}
+#endif
 
 	r = hdmi_power_on(dssdev);
 	if (r) {
@@ -703,10 +792,12 @@ int omapdss_hdmi_display_enable(struct omap_dss_device *dssdev)
 	return 0;
 
 err4:
+#if 0
 	regulator_disable(hdmi.hdmi_reg);
 err3:
 	regulator_put(hdmi.hdmi_reg);
 err2:
+#endif
 	if (dssdev->platform_disable)
 		dssdev->platform_disable(dssdev);
 err1:
@@ -736,9 +827,12 @@ void omapdss_hdmi_display_disable(struct omap_dss_device *dssdev)
 			hdmi.custom_set = 0;
 			pr_info("hdmi: clearing EDID info\n");
 		}
+// stargo - regulator handled in board-mapphone-panel
+#if 0
 	regulator_disable(hdmi.hdmi_reg);
 
 	regulator_put(hdmi.hdmi_reg);
+#endif
 
 	if (dssdev->platform_disable)
 		dssdev->platform_disable(dssdev);
@@ -849,7 +943,15 @@ static int omapdss_hdmihw_probe(struct platform_device *pdev)
 	hdmi.hdmi_data.hdmi_phy_offset = HDMI_PHY;
 	hdmi.wp_reset_done = false;
 
+//lucize - moto hack
+	/* Init the drive strength percent to full power */
+	hdmi.dssdev->phy.hdmi.phy = 100;
+//
 	hdmi_panel_init();
+
+//stargo - enable 5v regulator
+	if (hdmi.dssdev->platform_enable_hpd)
+		r = hdmi.dssdev->platform_enable_hpd(hdmi.dssdev);
 
 	if(hdmi_get_current_hpd())
 		hdmi_panel_hpd_handler(1);
@@ -859,6 +961,10 @@ static int omapdss_hdmihw_probe(struct platform_device *pdev)
 
 static int omapdss_hdmihw_remove(struct platform_device *pdev)
 {
+//stargo - disable 5v regulator
+	if (hdmi.dssdev->platform_disable_hpd)
+		hdmi.dssdev->platform_disable_hpd(hdmi.dssdev);
+
 	hdmi_panel_exit();
 
 	if (hdmi.dssdev)

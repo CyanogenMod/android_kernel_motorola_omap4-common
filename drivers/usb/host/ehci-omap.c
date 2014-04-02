@@ -82,6 +82,75 @@ static inline u32 ehci_read(void __iomem *base, u32 reg)
 	return __raw_readl(base + reg);
 }
 
+u8 omap_ehci_ulpi_read(const struct usb_hcd *hcd, u8 port, u8 reg)
+{
+	unsigned reg_internal = 0;
+	u8 val;
+	int count = 2000;
+
+	reg_internal = ((reg) << EHCI_INSNREG05_ULPI_REGADD_SHIFT)
+			/* Read */
+			| (3 << EHCI_INSNREG05_ULPI_OPSEL_SHIFT)
+			/* PORTn */
+			| ((port) << EHCI_INSNREG05_ULPI_PORTSEL_SHIFT)
+			/* start ULPI access*/
+			| (1 << EHCI_INSNREG05_ULPI_CONTROL_SHIFT);
+
+	ehci_write(hcd->regs, EHCI_INSNREG05_ULPI, reg_internal);
+
+	/* Wait for ULPI access completion */
+	while ((ehci_read(hcd->regs, EHCI_INSNREG05_ULPI)
+			& (1 << EHCI_INSNREG05_ULPI_CONTROL_SHIFT))) {
+		udelay(1);
+		if (count-- == 0) {
+			pr_err("ehci: omap_ehci_ulpi_read: Error");
+			break;
+		}
+	}
+
+	val = ehci_read(hcd->regs, EHCI_INSNREG05_ULPI) & 0xFF;
+	return val;
+}
+
+int omap_ehci_ulpi_write(const struct usb_hcd *hcd, u8 port, u8 val,
+						u8 reg, u8 retry_times)
+{
+	unsigned reg_internal = 0;
+	int status = 0;
+	int count;
+
+again:
+	count = 2000;
+
+	reg_internal = val |
+			((reg) << EHCI_INSNREG05_ULPI_REGADD_SHIFT)
+			/* Write */
+			| (2 << EHCI_INSNREG05_ULPI_OPSEL_SHIFT)
+			/* PORTn */
+			| ((port) << EHCI_INSNREG05_ULPI_PORTSEL_SHIFT)
+			/* start ULPI access*/
+			| (1 << EHCI_INSNREG05_ULPI_CONTROL_SHIFT);
+
+	ehci_write(hcd->regs, EHCI_INSNREG05_ULPI, reg_internal);
+
+	/* Wait for ULPI access completion */
+	while ((ehci_read(hcd->regs, EHCI_INSNREG05_ULPI)
+			& (1 << EHCI_INSNREG05_ULPI_CONTROL_SHIFT))) {
+		udelay(1);
+		if (count-- == 0) {
+			if (retry_times--) {
+				ehci_write(hcd->regs, EHCI_INSNREG05_ULPI, 0);
+				goto again;
+			} else {
+				pr_err("ehci: omap_ehci_ulpi_write: Error");
+				status = -ETIMEDOUT;
+				break;
+			}
+		}
+	}
+	return status;
+}
+
 /* For ISP1703 phy on OMAP4430 port 1, we need to force the PHY
  * to resume immediately after clearing PORTSC, to avoid disconnect.
  */
@@ -753,73 +822,6 @@ static int omap_ehci_hub_control(
 	}
 
 	return ehci_hub_control(hcd, typeReq, wValue, wIndex, buf, wLength);
-}
-
-u8 omap_ehci_ulpi_read(const struct usb_hcd *hcd, u8 reg)
-{
-	unsigned reg_internal = 0;
-	u8 val;
-	int count = 2000;
-
-	reg_internal = ((reg) << EHCI_INSNREG05_ULPI_REGADD_SHIFT)
-			/* Write */
-			| (3 << EHCI_INSNREG05_ULPI_OPSEL_SHIFT)
-			/* PORTn */
-			| ((1) << EHCI_INSNREG05_ULPI_PORTSEL_SHIFT)
-			/* start ULPI access*/
-			| (1 << EHCI_INSNREG05_ULPI_CONTROL_SHIFT);
-
-	ehci_write(hcd->regs, EHCI_INSNREG05_ULPI, reg_internal);
-
-	/* Wait for ULPI access completion */
-	while ((ehci_read(hcd->regs, EHCI_INSNREG05_ULPI)
-			& (1 << EHCI_INSNREG05_ULPI_CONTROL_SHIFT))) {
-		udelay(1);
-		if (count-- == 0) {
-			pr_err("ehci: omap_ehci_ulpi_read: Error");
-			break;
-		}
-	}
-
-	val = ehci_read(hcd->regs, EHCI_INSNREG05_ULPI) & 0xFF;
-	return val;
-}
-
-int omap_ehci_ulpi_write(const struct usb_hcd *hcd, u8 val, u8 reg, u8 retry_times)
-{
-	unsigned reg_internal = 0;
-	int status = 0;
-	int count;
-
-again:
-	count = 2000;
-	reg_internal = val |
-			((reg) << EHCI_INSNREG05_ULPI_REGADD_SHIFT)
-			/* Write */
-			| (2 << EHCI_INSNREG05_ULPI_OPSEL_SHIFT)
-			/* PORTn */
-			| ((1) << EHCI_INSNREG05_ULPI_PORTSEL_SHIFT)
-			/* start ULPI access*/
-			| (1 << EHCI_INSNREG05_ULPI_CONTROL_SHIFT);
-
-	ehci_write(hcd->regs, EHCI_INSNREG05_ULPI, reg_internal);
-
-	/* Wait for ULPI access completion */
-	while ((ehci_read(hcd->regs, EHCI_INSNREG05_ULPI)
-			& (1 << EHCI_INSNREG05_ULPI_CONTROL_SHIFT))) {
-		udelay(1);
-		if (count-- == 0) {
-			if (retry_times--) {
-				ehci_write(hcd->regs, EHCI_INSNREG05_ULPI, 0);
-				goto again;
-			} else {
-				pr_err("ehci: omap_ehci_ulpi_write: Error");
-				status = -ETIMEDOUT;
-				break;
-			}
-		}
-	}
-	return status;
 }
 
 static void omap_ehci_soft_phy_reset(struct platform_device *pdev, u8 port)

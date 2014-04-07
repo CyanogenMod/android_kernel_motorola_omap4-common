@@ -335,6 +335,15 @@ static void hdmi_hotplug_detect_worker(struct work_struct *work)
 					dssdev->panel.monspecs.max_x * 10000;
 			dssdev->panel.height_in_um =
 					dssdev->panel.monspecs.max_y * 10000;
+			/* set and enable an initial video mode
+			 * because some monitors don't like it if
+			 * we delay this too long and who knows when
+			 * usermode will do this (especially in factory
+			 * setting).
+			 */
+			mutex_unlock(&hdmi.hdmi_lock);
+			omapdss_hdmi_display_set_initial_mode(dssdev);
+			mutex_lock(&hdmi.hdmi_lock);
 			hdmi_inform_hpd_to_cec(true);
 			switch_set_state(&hdmi.hpd_switch, 1);
 			goto done;

@@ -99,6 +99,7 @@ static struct {
 	u8 s3d_mode;
 	bool s3d_enable;
 	int source_physical_address;
+	struct fb_videomode initial_vmode;
 	void (*hdmi_start_frame_cb)(void);
 	void (*hdmi_irq_cb)(int);
 	bool (*hdmi_power_on_cb)(void);
@@ -192,6 +193,18 @@ static int relaxed_fb_mode_is_equal(const struct fb_videomode *mode1,
 static int hdmi_set_timings(struct fb_videomode *vm, bool check_only)
 {
 	int i = 0;
+//STARGO - lapdock support
+	static const struct fb_videomode lapdock_modes[] = {
+		/* 1366x768 @ 60Hz */
+		{.refresh = 60, .xres = 1366, .yres = 768, .pixclock = 13888,
+		 .left_margin = 64, .right_margin = 14,
+		 .upper_margin = 28, .lower_margin = 1,
+		 .hsync_len = 56, .vsync_len = 3,
+		 .sync = FB_SYNC_HOR_HIGH_ACT | FB_SYNC_VERT_HIGH_ACT,
+		 .flag = FB_FLAG_RATIO_16_9,
+		 .vmode = FB_VMODE_NONINTERLACED},
+	};
+//STARGO - end
 	DSSDBG("hdmi_get_code\n");
 
 	if (!vm->xres || !vm->yres || !vm->pixclock)
@@ -199,7 +212,9 @@ static int hdmi_set_timings(struct fb_videomode *vm, bool check_only)
 
 	for (i = 0; i < CEA_MODEDB_SIZE; i++) {
 		if (relaxed_fb_mode_is_equal(cea_modes + i, vm)) {
+			u32 flag = vm->flag;
 			*vm = cea_modes[i];
+			vm->flag = flag;
 			if (check_only)
 				return 1;
 			hdmi.cfg.cm.code = i;
@@ -211,7 +226,9 @@ static int hdmi_set_timings(struct fb_videomode *vm, bool check_only)
 
 	for (i = 0; i < VESA_MODEDB_SIZE; i++) {
 		if (relaxed_fb_mode_is_equal(vesa_modes + i, vm)) {
+			u32 flag = vm->flag;
 			*vm = vesa_modes[i];
+			vm->flag = flag;
 			if (check_only)
 				return 1;
 			hdmi.cfg.cm.code = i;
@@ -220,6 +237,22 @@ static int hdmi_set_timings(struct fb_videomode *vm, bool check_only)
 			goto done;
 		}
 	}
+
+//STARGO - lapdock support
+	for (i = 0; i < sizeof(lapdock_modes) / sizeof(lapdock_modes[0]); i++) {
+		if (relaxed_fb_mode_is_equal(lapdock_modes + i, vm)) {
+			u32 flag = vm->flag;
+			*vm = lapdock_modes[i];
+			vm->flag = flag;
+			if (check_only)
+				return 1;
+			hdmi.cfg.cm.code = i;
+			hdmi.cfg.cm.mode = HDMI_DVI;
+			hdmi.cfg.timings = lapdock_modes[hdmi.cfg.cm.code];
+			goto done;
+		}
+	}
+//STARGO - end
 
 fail:
 	if (check_only)
@@ -239,6 +272,9 @@ void hdmi_get_monspecs(struct fb_monspecs *specs)
 {
 	int i, j;
 	char *edid = (char *) hdmi.edid;
+	int preferred_vmode = -1;
+	int default_code;
+	struct fb_videomode default_vmode;
 
 	memset(specs, 0x0, sizeof(*specs));
 	if (!hdmi.edid_set)
@@ -255,9 +291,26 @@ void hdmi_get_monspecs(struct fb_monspecs *specs)
 
 	hdmi.can_do_hdmi = specs->misc & FB_MISC_HDMI;
 
-	/* filter out resolutions we don't support */
+	memset(&hdmi.initial_vmode, 0, sizeof(hdmi.initial_vmode));
+	default_code = hdmi.dssdev->panel.hdmi_default_cea_code;
+	if (default_code > 0 && default_code < CEA_MODEDB_SIZE) {
+		default_vmode = cea_modes[default_code];
+		DSSINFO("Preferred cea_mode[%d], %dx%d@%d\n",
+			default_code, default_vmode.xres,
+			default_vmode.yres, default_vmode.refresh);
+	} else
+		default_code = 0;
+
+	/* mark resolutions we support */
 	for (i = j = 0; i < specs->modedb_len; i++) {
-		u32 max_pclk = hdmi.dssdev->clocks.hdmi.max_pixclk_khz;
+		u32 max_pclk;
+
+		pr_debug("Checking modedb[%d]: %dx%d@%d\n",
+			 i, specs->modedb[i].xres,
+			 specs->modedb[i].yres,
+			 specs->modedb[i].refresh);
+
+		max_pclk = hdmi.dssdev->clocks.hdmi.max_pixclk_khz;
 		if (!hdmi_set_timings(&specs->modedb[i], true))
 			continue;
 
@@ -268,9 +321,107 @@ void hdmi_get_monspecs(struct fb_monspecs *specs)
 		if (specs->modedb[i].flag & FB_FLAG_PIXEL_REPEAT)
 			continue;
 
+		/* if we made it here the mode is actually possible */
+		specs->modedb[i].flag |= FB_FLAG_HW_CAPABLE;
+
+		/* pick out the first mode that it claims to be preferred
+		 * and mark as such */
+		if ((preferred_vmode < 0) &&
+			specs->misc & FB_MISC_1ST_DETAIL &&
+			specs->modedb[i].flag & FB_MODE_IS_DETAILED) {
+			pr_info("First DTD marked preferred video mode: "
+				" %dx%d@%d\n",
+				specs->modedb[i].xres,
+				specs->modedb[i].yres,
+				specs->modedb[i].refresh);
+			specs->modedb[i].flag |= FB_FLAG_PREFERRED;
+			preferred_vmode = i;
+		}
+
+		/*
+		 * If this is a native resolution (came from a SVD),
+		 * and it's higher resolution than the preferred
+		 * resolution from the first DTD, mark it preferred
+		 * instead.
+		 */
+		if ((specs->modedb[i].flag & FB_FLAG_NATIVE) &&
+		    ((preferred_vmode < 0) ||
+		     ((specs->modedb[i].xres * specs->modedb[i].yres) >
+		      (specs->modedb[preferred_vmode].xres *
+		       specs->modedb[preferred_vmode].yres)))) {
+			if (preferred_vmode >= 0) {
+				/* clear previous */
+				specs->modedb[preferred_vmode].flag &=
+					~FB_FLAG_PREFERRED;
+				pr_info("Replacing previous preferred "
+					"vmode with better one\n");
+			}
+			pr_info("Marking native video mode as preferred:"
+				" %dx%d@%d\n",
+				specs->modedb[i].xres,
+				specs->modedb[i].yres,
+				specs->modedb[i].refresh);
+			specs->modedb[i].flag |= FB_FLAG_PREFERRED;
+			preferred_vmode = i;
+		}
+
 		specs->modedb[j++] = specs->modedb[i];
 	}
 	specs->modedb_len = j;
+
+	/*
+	 * Because the preferred mode might change a few times
+	 * in above pass (e.g. if the SVD native is better
+	 * than a DTD first entry), we select the initial
+	 * vmode in a second pass through the list.
+	 */
+	if (default_code) {
+		for (i = 0; i < specs->modedb_len; i++) {
+			/* check if we can use this mode as the initial one */
+			if ((specs->modedb[i].flag & FB_FLAG_HW_CAPABLE) &&
+			    relaxed_fb_mode_is_equal(&default_vmode,
+						     &specs->modedb[i])) {
+				pr_info("initial_vmode set to cea_mode[%d]\n",
+					default_code);
+				hdmi.initial_vmode = specs->modedb[i];
+				break;
+			}
+		}
+	}
+
+	/*
+	 * If the platform preferred mode isn't set or isn't supported
+	 * by the sink, choose the sink's preferred mode if there
+	 * is one.  If there's no sink preferred mode either, then
+	 * choose the first supported mode.
+	 */
+	if (!hdmi.initial_vmode.pixclock) {
+		if (preferred_vmode >= 0) {
+			hdmi.initial_vmode = specs->modedb[preferred_vmode];
+			pr_info("initial_vmode set to sink"
+				" preferred %dx%d@%d\n",
+				hdmi.initial_vmode.xres,
+				hdmi.initial_vmode.yres,
+				hdmi.initial_vmode.refresh);
+		} else {
+			/* take the first supported vmode as the initial one */
+			for (i = 0; i < specs->modedb_len; i++) {
+				if (specs->modedb[i].flag & FB_FLAG_HW_CAPABLE) {
+					pr_info("initial_vmode set to cea_mode[%d]\n",
+						default_code);
+					hdmi.initial_vmode = specs->modedb[i];
+					break;
+				}
+			}
+		}
+	}
+
+	if (hdmi.initial_vmode.pixclock)
+		pr_info("%s: initial_vmode set to %dx%d@%dHz\n",
+			__func__, hdmi.initial_vmode.xres,
+			hdmi.initial_vmode.yres, hdmi.initial_vmode.refresh);
+	else
+		pr_info("%s: No usable video mode found!\n", __func__);
 
 	/* Find out the Source Physical address for the CEC
 	CEC physical address will be part of VSD block from
@@ -718,6 +869,23 @@ int omapdss_hdmi_display_set_mode(struct omap_dss_device *dssdev,
 	dssdev->driver->disable(dssdev);
 	hdmi.set_mode = false;
 	r1 = hdmi_set_timings(vm, false) ? 0 : -EINVAL;
+	hdmi.custom_set = 1;
+	hdmi.code = hdmi.cfg.cm.code;
+	hdmi.mode = hdmi.cfg.cm.mode;
+	r2 = dssdev->driver->enable(dssdev);
+	return r1 ? : r2;
+}
+
+int omapdss_hdmi_display_set_initial_mode(struct omap_dss_device *dssdev)
+{
+	int r1, r2;
+
+	DSSINFO("Enter omapdss_hdmi_display_set_initial_mode\n");
+	if (!hdmi.initial_vmode.pixclock) {
+		DSSWARN("No valid initial_vmode set\n");
+		return -EINVAL;
+	}
+	r1 = hdmi_set_timings(&hdmi.initial_vmode, false) ? 0 : -EINVAL;
 	hdmi.custom_set = 1;
 	hdmi.code = hdmi.cfg.cm.code;
 	hdmi.mode = hdmi.cfg.cm.mode;

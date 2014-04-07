@@ -993,7 +993,9 @@ void fb_edid_add_monspecs(unsigned char *edid, struct fb_monspecs *specs)
 	unsigned char *block;
 	struct fb_videomode *m;
 	int num = 0, i;
-	u8 svd[64], edt[(128 - 4) / DETAILED_TIMING_DESCRIPTION_SIZE];
+	u8 edt[(128 - 4) / DETAILED_TIMING_DESCRIPTION_SIZE];
+	u8 svd[CEA_MODEDB_SIZE-1];
+	u8 svd_native[CEA_MODEDB_SIZE-1];
 	u8 pos = 4, svd_n = 0;
 
 	if (!edid)
@@ -1016,6 +1018,9 @@ void fb_edid_add_monspecs(unsigned char *edid, struct fb_monspecs *specs)
 		if (type == 2) {
 			for (i = pos; i < pos + len; i++) {
 				u8 idx = edid[i] & 0x7f;
+				if (svd_n >= ARRAY_SIZE(svd))
+					return;
+				svd_native[svd_n] = (edid[i] & 0x80) ? 1 : 0;
 				svd[svd_n++] = idx;
 				pr_debug("N%sative mode #%d\n",
 					 edid[i] & 0x80 ? "" : "on-n", idx);
@@ -1066,6 +1071,11 @@ void fb_edid_add_monspecs(unsigned char *edid, struct fb_monspecs *specs)
 			memcpy(&m[i], cea_modes + idx, sizeof(m[i]));
 			pr_debug("Adding SVD #%d: %ux%u@%u\n", idx,
 				 m[i].xres, m[i].yres, m[i].refresh);
+			if (svd_native[i - specs->modedb_len - num]) {
+				pr_debug("\tmarking it native\n");
+				m[i].flag |= FB_FLAG_NATIVE;
+			}
+
 		}
 	}
 

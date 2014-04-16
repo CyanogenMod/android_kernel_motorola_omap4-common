@@ -226,9 +226,12 @@ struct fb_bitfield {
 #define FB_VMODE_SMOOTH_XPAN	512	/* smooth xpan possible (internally used) */
 #define FB_VMODE_CONUPDATE	512	/* don't update x/yoffset	*/
 
-#define FB_FLAG_RATIO_4_3	64
-#define FB_FLAG_RATIO_16_9	128
-#define FB_FLAG_PIXEL_REPEAT	256
+#define FB_FLAG_RATIO_4_3	64	/* 0x0040 */
+#define FB_FLAG_RATIO_16_9	128	/* 0x0080 */
+#define FB_FLAG_PIXEL_REPEAT	256	/* 0x0100 */
+#define FB_FLAG_PREFERRED	512	/* 0x0200 */
+#define FB_FLAG_HW_CAPABLE	1024	/* 0x0400 */
+#define FB_FLAG_NATIVE		2048	/* 0x0800 */
 
 /*
  * Display rotation support
@@ -484,6 +487,8 @@ struct fb_monspecs {
 	__u8  revision;			/* ...and revision */
 	__u8  max_x;			/* Maximum horizontal size (cm) */
 	__u8  max_y;			/* Maximum vertical size (cm) */
+	struct fb_audio *audiodb;	/* audio database */
+	__u32 audiodb_len;		/* audio database length */
 };
 
 struct fb_cmap_user {
@@ -1003,6 +1008,7 @@ extern ssize_t fb_sys_write(struct fb_info *info, const char __user *buf,
 /* drivers/video/fbmem.c */
 extern int register_framebuffer(struct fb_info *fb_info);
 extern int unregister_framebuffer(struct fb_info *fb_info);
+extern int unlink_framebuffer(struct fb_info *fb_info);
 extern void remove_conflicting_framebuffers(struct apertures_struct *a,
 				const char *name, bool primary);
 extern int fb_prepare_logo(struct fb_info *fb_info, int rotate);
@@ -1159,6 +1165,28 @@ struct fb_videomode {
 	u32 vmode;
 	u32 flag;
 };
+
+#define FB_AUDIO_LPCM  1
+
+#define FB_AUDIO_192KHZ	(1 << 6)
+#define FB_AUDIO_176KHZ	(1 << 5)
+#define FB_AUDIO_96KHZ (1 << 4)
+#define FB_AUDIO_88KHZ (1 << 3)
+#define FB_AUDIO_48KHZ (1 << 2)
+#define FB_AUDIO_44KHZ (1 << 1)
+#define FB_AUDIO_32KHZ (1 << 0)
+
+#define FB_AUDIO_24BIT (1 << 2)
+#define FB_AUDIO_20BIT (1 << 1)
+#define FB_AUDIO_16BIT (1 << 0)
+
+struct fb_audio {
+	u8 format;
+	u8 channel_count;
+	u8 sample_rates;
+	u8 bit_rates;
+};
+
 
 extern const char *fb_mode_option;
 extern const struct fb_videomode vesa_modes[];

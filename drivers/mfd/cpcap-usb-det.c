@@ -314,8 +314,8 @@ static void vusb_disable(struct cpcap_usb_det_data *data)
 {
 	mutex_lock(&vusb_reg_lock);
 	if (data->is_vusb_enabled) {
-		wake_unlock(&data->wake_lock);
-		pr_cpcap_usb_det(STATUS, "usb wakelock released\n");
+		wake_lock_timeout(&data->wake_lock, HZ/4);
+		pr_cpcap_usb_det(STATUS, "usb wakelock will be released in 250ms\n");
 		regulator_disable(data->regulator_vusb);
 		data->is_vusb_enabled = 0;
 	}

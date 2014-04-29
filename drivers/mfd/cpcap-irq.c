@@ -186,7 +186,7 @@ static enum hrtimer_restart longPress_timer_callback(struct hrtimer *timer)
 	struct cpcap_device *cpcap = pwrkey_data->cpcap;
 	enum pwrkey_states new_state = PWRKEY_PRESS;
 
-	wake_lock_timeout(&pwrkey_data->wake_lock, 20);
+	wake_lock_timeout(&pwrkey_data->wake_lock, 2*HZ+5);
 
 
 	pwrkey_data->expired = 1;
@@ -210,10 +210,21 @@ static void pwrkey_handler(enum cpcap_irqs irq, void *data)
 #ifdef CONFIG_PM_DEEPSLEEP
 
 	if (get_deepsleep_mode()) {
-		if (new_state == PWRKEY_RELEASE) {
+		if ((last_state == PWRKEY_RELEASE) &&
+		    (new_state == PWRKEY_RELEASE)) {
+			/* Key must have been released before press was handled. Send
+			 * both the press and the release. */
+			hrtimer_cancel(&pwrkey_data->longPress_timer);
+			wake_lock_timeout(&pwrkey_data->wake_lock,
+					  2*HZ+5);
+			if (!delayed_work_pending(&pwrkey_data->pwrkey_delayed_work))
+				cpcap_broadcast_key_event(cpcap, KEY_END, PWRKEY_PRESS);
+			schedule_delayed_work(&pwrkey_data->pwrkey_delayed_work,
+					      msecs_to_jiffies(100));
+		} else if (new_state == PWRKEY_RELEASE) {
 			flush_delayed_work(&pwrkey_data->pwrkey_delayed_work);
 			hrtimer_cancel(&pwrkey_data->longPress_timer);
-			wake_lock_timeout(&pwrkey_data->wake_lock, 20);
+			wake_lock_timeout(&pwrkey_data->wake_lock, 2*HZ+5);
 			if (pwrkey_data->expired == 1) {
 				pwrkey_data->expired = 0;
 				cpcap_broadcast_key_event(cpcap,
@@ -234,7 +245,7 @@ static void pwrkey_handler(enum cpcap_irqs irq, void *data)
 
 	if ((new_state < PWRKEY_UNKNOWN) && (new_state != last_state)) {
 #endif
-		wake_lock_timeout(&pwrkey_data->wake_lock, 20);
+		wake_lock_timeout(&pwrkey_data->wake_lock, 2*HZ+5);
 		flush_delayed_work(&pwrkey_data->pwrkey_delayed_work);
 		cpcap_broadcast_key_event(cpcap, KEY_END, new_state);
 		pwrkey_data->state = new_state;
@@ -243,7 +254,7 @@ static void pwrkey_handler(enum cpcap_irqs irq, void *data)
 		/* Key must have been released before press was handled. Send
 		 * both the press and the release. */
 		wake_lock_timeout(&pwrkey_data->wake_lock,
-				  msecs_to_jiffies(200));
+				  2*HZ+5);
 		if (!delayed_work_pending(&pwrkey_data->pwrkey_delayed_work))
 			cpcap_broadcast_key_event(cpcap, KEY_END, PWRKEY_PRESS);
 		schedule_delayed_work(&pwrkey_data->pwrkey_delayed_work,

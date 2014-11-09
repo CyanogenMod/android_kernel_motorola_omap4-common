@@ -747,6 +747,9 @@ static int omap4_pm_suspend(void)
 	if (off_mode_enabled)
 		omap4_device_set_state_off(1);
 
+	/* Clear previous SAR hints */
+	need_sar_restore = 0;
+
 	/*
 	 * For MPUSS to hit power domain retention(CSWR or OSWR),
 	 * CPU0 and CPU1 power domain needs to be in OFF or DORMANT

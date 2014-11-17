@@ -4168,7 +4168,7 @@ static bool mapphone_panel_support_te(struct omap_dss_device *dssdev)
 static int amoled_cmoste_wr(struct omap_dss_device *dssdev)
 {
 	struct mapphone_dsi_panel_data *panel_data = get_panel_data(dssdev);
-	int r;
+	int r = 0;
 	u8 data[6];
 
 	if ((panel_data->te_type == OMAP_DSI_TE_CMOS_TE_0) &&

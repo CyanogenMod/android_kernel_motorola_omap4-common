@@ -406,7 +406,8 @@ static void spi_tty_handle_data(struct mdm6600_spi_tty_device  *mdm6600_tty,
 				unsigned char *rx_buf)
 {
 	struct spi_tty_msg *msg;
-	int cnt, crc, len;
+	int cnt = 0;
+	int crc, len;
 	u32 msg_type, msg_len, msg_fcs;
 	u8 *data;
 	u8 request_num, i;

@@ -691,7 +691,7 @@ static int fw_load(struct cpcap_uc_data *uc_data, struct device *dev)
 {
 	int err;
 	const struct ihex_binrec *rec;
-	const struct firmware *fw;
+	const struct firmware *fw = NULL;
 	unsigned short *buf;
 	int i;
 	unsigned short num_bytes;

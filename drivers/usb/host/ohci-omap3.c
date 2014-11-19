@@ -62,6 +62,12 @@ static int ohci_omap3_bus_suspend(struct usb_hcd *hcd)
 	 */
 	msleep(5);
 
+	if (hcd->self.connection_change) {
+		dev_err(dev, "Connection state changed\n");
+		save_usb_sar_regs();
+		hcd->self.connection_change = 0;
+	}
+
 	if (ret != 0) {
 		dev_dbg(dev, "ohci_omap3_bus_suspend failed %d\n", ret);
 		return ret;

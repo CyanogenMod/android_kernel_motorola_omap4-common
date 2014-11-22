@@ -435,6 +435,18 @@ static int __inet_insert_ifa(struct in_ifaddr *ifa, struct nlmsghdr *nlh,
 		return 0;
 	}
 
+	/* STARGO: HACK: Force netmask for qmiX and rmnetX */
+	if ((!strncmp(in_dev->dev->name, "qmi", 3)) ||
+	    (!strncmp(in_dev->dev->name, "rmnet", 5))) {
+		if (ifa->ifa_prefixlen > 30) {
+			printk(KERN_DEBUG "OLDRIL: forcing prefixlen of %s from %d to 30\n",
+					in_dev->dev->name,
+					ifa->ifa_prefixlen);
+			ifa->ifa_prefixlen = 30;
+			ifa->ifa_mask = inet_make_mask(ifa->ifa_prefixlen);
+		}
+	}
+
 	ifa->ifa_flags &= ~IFA_F_SECONDARY;
 	last_primary = &in_dev->ifa_list;
 

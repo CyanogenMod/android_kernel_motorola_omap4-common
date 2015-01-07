@@ -56,15 +56,6 @@ static size_t lowmem_minfree[6] = {
 	16 * 1024,	/* 64MB */
 };
 static int lowmem_minfree_size = 4;
-static size_t lowmem_swapfree[6] = {
-	1 * 1024,	/* 4MB */
-	2 * 1024,	/* 8MB */
-	3 * 1024,	/* 12MB */
-	4 * 1024,	/* 16MB */
-	6 * 1024,	/* 24MB */
-	10 * 1024,	/* 40MB */
-};
-static int lowmem_swapfree_size = 6;
 
 static unsigned int offlining;
 static struct task_struct *lowmem_deathpending;
@@ -166,8 +157,7 @@ static int lowmem_shrink(struct shrinker *s, struct shrink_control *sc)
 		array_size = lowmem_minfree_size;
 	for (i = 0; i < array_size; i++) {
 		minfree = lowmem_minfree[i];
-		if ((other_free < minfree && other_file < minfree) ||
-		    (total_swap_pages ? nr_swap_pages < lowmem_swapfree[i] : 0)) {
+		if (other_free < minfree && other_file < minfree) {
 			min_adj = lowmem_adj[i];
 			break;
 		}
@@ -355,8 +345,6 @@ module_param_array_named(adj, lowmem_adj, int, &lowmem_adj_size,
 			 S_IRUGO | S_IWUSR);
 #endif
 module_param_array_named(minfree, lowmem_minfree, uint, &lowmem_minfree_size,
-			 S_IRUGO | S_IWUSR);
-module_param_array_named(swapfree, lowmem_swapfree, uint, &lowmem_swapfree_size,
 			 S_IRUGO | S_IWUSR);
 module_param_named(debug_level, lowmem_debug_level, uint, S_IRUGO | S_IWUSR);
 

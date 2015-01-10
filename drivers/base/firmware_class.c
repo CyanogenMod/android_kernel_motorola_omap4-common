@@ -271,8 +271,7 @@ static ssize_t firmware_loading_store(struct device *dev,
 		/* fallthrough */
 	case -1:
 	err:
-		if (fw_priv->fw)
-			fw_load_abort(fw_priv);
+		fw_load_abort(fw_priv);
 		break;
 	}
 

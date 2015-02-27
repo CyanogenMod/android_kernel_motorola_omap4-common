@@ -113,7 +113,6 @@ struct voltagedomain {
  * @target_volt:	what voltage is happening
  * @op_result:		valid only for POSTCHANGE, tells the result of
  *			the operation.
- * @nvalue_override:	Used as an override for nvalue pulled from efuse registers
  *
  * This provides notification
  */

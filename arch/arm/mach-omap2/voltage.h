@@ -113,6 +113,7 @@ struct voltagedomain {
  * @target_volt:	what voltage is happening
  * @op_result:		valid only for POSTCHANGE, tells the result of
  *			the operation.
+ * @nvalue_override:	Used as an override for nvalue pulled from efuse registers
  *
  * This provides notification
  */
@@ -149,6 +150,7 @@ struct omap_voltage_notifier {
  *			usage of ABB; OMAP_ABB_NOMINAL_OPP - which bypasses ABB
  *			LDO; or OMAP_ABB_FAST_OPP, which enables Forward-Body
  *			Bias.
+ * @nvalue_override: 	Used as an override for nvalue pulled from efuse registers
  */
 struct omap_volt_data {
 	u32	volt_nominal;
@@ -159,6 +161,7 @@ struct omap_volt_data {
 	u8	sr_errminlimit;
 	u8	vp_errgain;
 	int	abb_type;
+	u32	nvalue_override;
 };
 
 /*

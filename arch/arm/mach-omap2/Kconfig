@@ -504,3 +504,25 @@ config OMAP4_PPA_CPU1_ONLINE_BUG
 endmenu
 
 endif
+
+menu "JJB666 Special options"
+
+comment "Added by JooJooBee666 for OC MOD"
+
+config USE_FREQ_REDUC_MOD
+	bool "Remove options between 300Mhz and 1Ghz"
+	default n
+
+config USE_13_CLOCK
+	bool "Enable 1.3Ghz Overclock"
+	default n
+
+config USE_14_CLOCK
+	bool "Enable 1.4Ghz Overclock"
+	default n
+
+config USE_MULTI_FREQ
+	bool "Enable additional frequency steps"
+	default n
+
+endmenu

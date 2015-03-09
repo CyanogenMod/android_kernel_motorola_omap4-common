@@ -809,6 +809,7 @@ static ssize_t store_hispeed_freq(struct kobject *kobj,
 	ret = strict_strtoul(buf, 0, &val);
 	if (ret < 0)
 		return ret;
+	printk(">>> hispeed_freq being changed to %ul\n", val);
 	hispeed_freq = val;
 	return count;
 }

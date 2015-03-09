@@ -63,7 +63,7 @@ struct omap_volt_data omap443x_vdd_mpu_volt_data[] = {
 	VOLT_DATA_DEFINE(OMAP4430_VDD_MPU_OPP50A_UV, 0, OMAP44XX_CONTROL_FUSE_MPU_OPP50, 0xf4, 0x0c, OMAP_ABB_NOMINAL_OPP, 0),
 	VOLT_DATA_DEFINE(OMAP4430_VDD_MPU_OPP50B_UV, 0, OMAP44XX_CONTROL_FUSE_MPU_OPP50, 0xf4, 0x0c, OMAP_ABB_NOMINAL_OPP, 0),
 #endif
-#if defined(CONFIG_USE_FREQ_REDUC_MOD) && !defined(CONFIG_USE_MULTI_FREQ)
+#if !defined(CONFIG_USE_FREQ_REDUC_MOD) && !defined(CONFIG_USE_MULTI_FREQ)
 	/* Add 600Mhz and 800Mhz */
 	VOLT_DATA_DEFINE(OMAP4430_VDD_MPU_OPP100_UV, 0, OMAP44XX_CONTROL_FUSE_MPU_OPP100, 0xf9, 0x16, OMAP_ABB_NOMINAL_OPP, 0),
 	VOLT_DATA_DEFINE(OMAP4430_VDD_MPU_OPPTURBO_UV, 0, OMAP44XX_CONTROL_FUSE_MPU_OPPTURBO, 0xfa, 0x23, OMAP_ABB_NOMINAL_OPP, 0),
@@ -131,7 +131,7 @@ static struct omap_vdd_dep_volt omap443x_vdd_mpu_core_dep_data[] = {
 	{.main_vdd_volt = OMAP4430_VDD_MPU_OPP50A_UV, .dep_vdd_volt = OMAP4430_VDD_CORE_OPP50_UV},
 	{.main_vdd_volt = OMAP4430_VDD_MPU_OPP50B_UV, .dep_vdd_volt = OMAP4430_VDD_CORE_OPP50_UV},
 #endif
-#if defined(CONFIG_USE_FREQ_REDUC_MOD) && !defined(CONFIG_USE_MULTI_FREQ)
+#if !defined(CONFIG_USE_FREQ_REDUC_MOD) && !defined(CONFIG_USE_MULTI_FREQ)
 	/* Add 600Mhz and 800Mhz */
 	{.main_vdd_volt = OMAP4430_VDD_MPU_OPP100_UV, .dep_vdd_volt = OMAP4430_VDD_CORE_OPP100_UV},
 	{.main_vdd_volt = OMAP4430_VDD_MPU_OPPTURBO_UV, .dep_vdd_volt = OMAP4430_VDD_CORE_OPP100_UV},
@@ -192,7 +192,7 @@ static struct omap_opp_def __initdata omap443x_opp_def_list[] = {
 	/* MPU OPP1 - OPP50 */
 	OPP_INITIALIZER("mpu", "dpll_mpu_ck", "mpu", true, 500000000, OMAP4430_VDD_MPU_OPP50B_UV),
 #endif
-#if defined(CONFIG_USE_FREQ_REDUC_MOD) && !defined(CONFIG_USE_MULTI_FREQ)
+#if !defined(CONFIG_USE_FREQ_REDUC_MOD) && !defined(CONFIG_USE_MULTI_FREQ)
 	/* Add 600Mhz and 800Mhz */
 	/* MPU OPP2 - OPP100 */
 	OPP_INITIALIZER("mpu", "dpll_mpu_ck", "mpu", true, 600000000, OMAP4430_VDD_MPU_OPP100_UV),

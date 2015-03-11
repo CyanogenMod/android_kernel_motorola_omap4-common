@@ -79,3 +79,4 @@ obj-$(CONFIG_VIB_OMAP_PWM)	+= vib-omap-pwm.o
 obj-$(CONFIG_VIB_PWM)		+= vib-pwm.o
 obj-$(CONFIG_VIB_TIMED)		+= vib-timed.o
 obj-$(CONFIG_GC_CORE)		+= gc-core/
+obj-$(CONFIG_UID_CPUTIME) += uid_cputime.o

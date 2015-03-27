@@ -73,6 +73,7 @@ static struct omap2_pm_lp_description _pm_lp_desc = {
 static struct omap_device_pm_latency *pm_lats;
 
 static struct device *mpu_dev;
+static struct device *gpu_dev;
 static struct device *iva_dev;
 static struct device *l3_dev;
 static struct device *dsp_dev;
@@ -100,6 +101,14 @@ struct device *omap2_get_l3_device(void)
 	return l3_dev;
 }
 EXPORT_SYMBOL(omap2_get_l3_device);
+
+
+struct device *omap4_get_gpu_device(void)
+{
+	WARN_ON_ONCE(!gpu_dev);
+	return gpu_dev;
+}
+EXPORT_SYMBOL(omap4_get_gpu_device);
 
 struct device *omap4_get_dsp_device(void)
 {

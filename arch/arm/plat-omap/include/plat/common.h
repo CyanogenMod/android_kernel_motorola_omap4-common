@@ -96,6 +96,7 @@ void omap3_map_io(void);
 extern struct device *omap2_get_mpuss_device(void);
 extern struct device *omap2_get_iva_device(void);
 extern struct device *omap2_get_l3_device(void);
+extern struct device *omap4_get_gpu_device(void);
 extern struct device *omap4_get_dsp_device(void);
 extern struct device *omap4_get_fdif_device(void);
 

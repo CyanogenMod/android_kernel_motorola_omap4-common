@@ -525,4 +525,12 @@ config USE_MULTI_FREQ
 	bool "Enable additional frequency steps"
 	default n
 
+config USE_GPU_OC
+	bool "Enable overclock of GPU to 384Mhz"
+	default n
+
+config USE_HIGH_VOLTAGE
+	bool "Enable higher voltage for 1.4Ghz"
+	default n
+
 endmenu

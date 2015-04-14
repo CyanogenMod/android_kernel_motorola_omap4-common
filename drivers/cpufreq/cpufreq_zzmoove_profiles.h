@@ -315,7 +315,7 @@ struct zzmoove_profile zzmoove_profiles[] = {
 		1,		// sampling_down_factor (1=disable, range from 2 to MAX_SAMPLING_DOWN_FACTOR)
 		0,		// sampling_down_max_momentum (0=disable, range from 1 to MAX_SAMPLING_DOWN_FACTOR)
 		50,		// sampling_down_momentum_sensitivity (range from 1 to MAX_SAMPLING_DOWN_SENSITIVITY)
-		100000,		// sampling_rate (range from MIN_SAMPLING_RATE to any value)
+		30000,		// sampling_rate (range from MIN_SAMPLING_RATE to any value)
 		180000,		// sampling_rate_idle (range from MIN_SAMPLING_RATE to any value)
 		0,		// sampling_rate_idle_delay (0=disable, any value above 0)
 		40,		// sampling_rate_idle_threshold (range from 1 to 100)

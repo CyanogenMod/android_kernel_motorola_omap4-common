@@ -122,6 +122,13 @@ config CPU_FREQ_DEFAULT_GOV_HOTPLUG
 	  the help section of the driver. Fallback governor will be the
 	  performance governor.
 
+config CPU_FREQ_DEFAULT_GOV_INTELLIMM
+	bool "intelliminmax"
+	select CPU_FREQ_GOV_INTELLIMM
+	help
+	  Use the CPUFreq governor 'intelliminmax' as default. This is
+	  governor will use only 3 different frequencies, idle, UI and max
+
 config CPU_FREQ_DEFAULT_GOV_INTERACTIVEX
 	bool "interactivex"
 	select CPU_FREQ_GOV_INTERACTIVEX
@@ -140,6 +147,12 @@ config CPU_FREQ_DEFAULT_GOV_KTOONSERVATIVE
 	  governor. If unsure have a look at the help section of the
 	  driver. Fallback governor will be the performance governor.  This
 	  governor adds the capability of hotpluging. 
+
+config CPU_FREQ_DEFAULT_GOV_LIONHEART
+	bool "lionheart"
+	select CPU_FREQ_GOV_LIONHEART
+	help
+	 Use the CPUFreq governor 'lionheart' as default.
 
 config CPU_FREQ_DEFAULT_GOV_SMARTASSH3
 	bool "smartassH3"
@@ -253,6 +266,16 @@ config CPU_FREQ_GOV_CONSERVATIVE
 
 	  If in doubt, say N.
 
+config CPU_FREQ_GOV_INTELLIMM
+	tristate "'intelliminmax' cpufreq policy governor"
+	help
+	  To compile this driver as a module, choose M here: the
+	  module will be called cpufreq_interactive.
+
+	  For details, take a look at linux/Documentation/cpu-freq.
+
+	  If in doubt, say N.
+          
 config CPU_FREQ_GOV_INTERACTIVEX
 	tristate "'interactiveX' cpufreq governor"
 	depends on CPU_FREQ
@@ -285,6 +308,14 @@ config CPU_FREQ_GOV_KTOONSERVATIVE
 
 	  If in doubt, say N.
 
+config CPU_FREQ_GOV_LIONHEART
+	tristate "lionheart"
+	depends on CPU_FREQ
+	help
+	 Use the CPUFreq governor 'lionheart' as default.
+
+	  If in doubt, say N.
+  
 config CPU_FREQ_GOV_SMARTASSH3
 	tristate "'SmartassH3' cpufreq governor"
 	depends on CPU_FREQ

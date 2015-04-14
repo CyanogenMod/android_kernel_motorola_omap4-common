@@ -609,10 +609,10 @@
 #define ZZMOOVE_VERSION "1.0 beta5"
 
 // ZZ: support for 2,4 or 8 cores (this will enable/disable hotplug threshold tuneables)
-#define MAX_CORES					(4)
+#define MAX_CORES					(2)
 
 // ZZ: enable/disable hotplug support
-#define ENABLE_HOTPLUGGING
+// #define ENABLE_HOTPLUGGING
 
 // ZZ: in addition support for native hotplugging on qualcomm platform
 // #define QCOM_NATIVE_HOTPLUGGING
@@ -622,7 +622,7 @@
 
 // ZZ: include profiles header file and set name for 'custom' profile (informational for a changed profile value)
 #include "cpufreq_zzmoove_profiles.h"
-#define DEF_PROFILE_NUMBER				(0)	// ZZ: default profile number (profile = 0 = 'none' = tuneable mode)
+#define DEF_PROFILE_NUMBER				(1)	// ZZ: default profile number (profile = 0 = 'none' = tuneable mode)
 static char custom_profile[20] = "custom";			// ZZ: name to show in sysfs if any profile value has changed
 
 // Yank: enable/disable debugging code
@@ -658,7 +658,7 @@ static char custom_profile[20] = "custom";			// ZZ: name to show in sysfs if any
 
 // ZZ: hotplug-switch, -block, -idle, -limit and scaling-block, -fastdown, -responiveness, -proportional tuneable defaults
 #ifdef ENABLE_HOTPLUGGING
-#define DEF_DISABLE_HOTPLUG				(0)	// ZZ: default hotplug switch
+#define DEF_DISABLE_HOTPLUG				(1)	// ZZ: default hotplug switch
 #define DEF_HOTPLUG_BLOCK_UP_CYCLES			(0)	// ZZ: default hotplug up block cycles
 #define DEF_HOTPLUG_BLOCK_DOWN_CYCLES			(0)	// ZZ: default hotplug down block cycles
 #define DEF_HOTPLUG_IDLE_THRESHOLD			(0)	// ZZ: default hotplug idle threshold
@@ -682,7 +682,7 @@ static char custom_profile[20] = "custom";			// ZZ: name to show in sysfs if any
 
 // ZZ: sampling rate idle and sampling down momentum tuneable defaults
 #define DEF_SAMPLING_RATE_IDLE_THRESHOLD		(0)	// ZZ: default sampling rate idle threshold
-#define DEF_SAMPLING_RATE_IDLE				(180000)// ZZ: default sampling rate idle (must not be 0!)
+#define DEF_SAMPLING_RATE_IDLE				(30000)// ZZ: default sampling rate idle (must not be 0!)
 #define DEF_SAMPLING_RATE_IDLE_DELAY			(0)	// ZZ: default sampling rate idle delay
 #define DEF_SAMPLING_DOWN_FACTOR			(1)	// ZZ: default sampling down factor (stratosk default = 4) here disabled by default
 #define MAX_SAMPLING_DOWN_FACTOR			(100000)// ZZ: changed from 10 to 100000 for sampling down momentum implementation

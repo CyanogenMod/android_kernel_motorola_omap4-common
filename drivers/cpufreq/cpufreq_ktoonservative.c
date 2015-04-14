@@ -432,8 +432,10 @@ static ssize_t store_disable_hotplugging(struct kobject *a, struct attribute *b,
 	int ret;
 	ret = sscanf(buf, "%u", &input);
 
-	if (input != 0 && input != 1)
+	if (input != 0 && input != 1) {
 		input = 0;
+		printk("KToonservative: Setting disable_hottplugging to 0\n");
+	}
 
 	dbs_tuners_ins.disable_hotplugging = input;
 	return count;
@@ -773,7 +775,7 @@ static void kthotplug_offline_work_fn(struct work_struct *work)
 	int cpu;
 	//pr_info("ENTER OFFLINE");
 	for_each_online_cpu(cpu) {
-		if (likely(cpu_online(cpu) && (cpu))) {
+		if (likely(cpu_online(cpu) && (cpu)) && !dbs_tuners_ins.disable_hotplugging) {
 			cpu_down(cpu);
 			//pr_info("auto_hotplug: CPU%d down.\n", cpu);
 			break;

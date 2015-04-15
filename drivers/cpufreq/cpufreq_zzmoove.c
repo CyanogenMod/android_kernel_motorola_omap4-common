@@ -612,7 +612,7 @@
 #define MAX_CORES					(2)
 
 // ZZ: enable/disable hotplug support
-// #define ENABLE_HOTPLUGGING
+#define ENABLE_HOTPLUGGING
 
 // ZZ: in addition support for native hotplugging on qualcomm platform
 // #define QCOM_NATIVE_HOTPLUGGING
@@ -658,7 +658,7 @@ static char custom_profile[20] = "custom";			// ZZ: name to show in sysfs if any
 
 // ZZ: hotplug-switch, -block, -idle, -limit and scaling-block, -fastdown, -responiveness, -proportional tuneable defaults
 #ifdef ENABLE_HOTPLUGGING
-#define DEF_DISABLE_HOTPLUG				(1)	// ZZ: default hotplug switch
+#define DEF_DISABLE_HOTPLUG				(0)	// ZZ: default hotplug switch
 #define DEF_HOTPLUG_BLOCK_UP_CYCLES			(0)	// ZZ: default hotplug up block cycles
 #define DEF_HOTPLUG_BLOCK_DOWN_CYCLES			(0)	// ZZ: default hotplug down block cycles
 #define DEF_HOTPLUG_IDLE_THRESHOLD			(0)	// ZZ: default hotplug idle threshold

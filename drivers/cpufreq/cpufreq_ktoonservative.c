@@ -53,7 +53,7 @@
 #define MIN_SAMPLING_RATE_RATIO			(2)
 
 static unsigned int min_sampling_rate;
-static unsigned int stored_sampling_rate = 45000;
+static unsigned int stored_sampling_rate = 30000;
 static unsigned int Lcpu_down_block_cycles = 0;
 static unsigned int Lcpu_up_block_cycles = 0;
 static bool boostpulse_relayf = false;
@@ -71,8 +71,8 @@ extern void kt_is_active_benabled_gpio(bool val);
 extern void kt_is_active_benabled_touchkey(bool val);
 extern void kt_is_active_benabled_power(bool val);
 
-#define LATENCY_MULTIPLIER			(1000)
-#define MIN_LATENCY_MULTIPLIER			(100)
+#define LATENCY_MULTIPLIER			(500)
+#define MIN_LATENCY_MULTIPLIER			(50)
 #define DEF_SAMPLING_DOWN_FACTOR		(1)
 #define MAX_SAMPLING_DOWN_FACTOR		(10)
 #define TRANSITION_LATENCY_LIMIT		(10 * 1000 * 1000)
@@ -437,7 +437,7 @@ static ssize_t store_disable_hotplugging(struct kobject *a, struct attribute *b,
 		printk("KToonservative: Setting disable_hottplugging to 0\n");
 	}
 
-	dbs_tuners_ins.disable_hotplugging = input;
+	dbs_tuners_ins.disable_hotplugging = 1;
 	return count;
 }
 

@@ -612,7 +612,7 @@
 #define MAX_CORES					(2)
 
 // ZZ: enable/disable hotplug support
-#define ENABLE_HOTPLUGGING
+//#define ENABLE_HOTPLUGGING
 
 // ZZ: in addition support for native hotplugging on qualcomm platform
 // #define QCOM_NATIVE_HOTPLUGGING

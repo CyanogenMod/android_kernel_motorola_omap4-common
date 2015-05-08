@@ -30,11 +30,14 @@
 #include <linux/earlysuspend.h>
 #endif
 
-#define DEBUG_INTELLI_PLUG
-//#undef DEBUG_INTELLI_PLUG
+//#define DEBUG_INTELLI_PLUG
+#undef DEBUG_INTELLI_PLUG
 
-#define INTELLI_PLUG_MAJOR_VERSION	4
-#define INTELLI_PLUG_MINOR_VERSION	0
+static unsigned int int_hotplug = 0;
+module_param(int_hotplug, int, 0755);
+
+#define INTELLI_PLUG_MAJOR_VERSION	3
+#define INTELLI_PLUG_MINOR_VERSION	8
 
 #define DEF_SAMPLING_MS			(268)
 
@@ -53,13 +56,13 @@ static struct workqueue_struct *intelliplug_wq;
 static struct workqueue_struct *intelliplug_boost_wq;
 
 static unsigned int intelli_plug_active = 1;
-module_param(intelli_plug_active, uint, 0664);
+module_param(intelli_plug_active, uint, 0644);
 
 static unsigned int touch_boost_active = 0;
-module_param(touch_boost_active, uint, 0664);
+module_param(touch_boost_active, uint, 0644);
 
 static unsigned int nr_run_profile_sel = 0;
-module_param(nr_run_profile_sel, uint, 0664);
+module_param(nr_run_profile_sel, uint, 0644);
 
 //default to something sane rather than zero
 static unsigned int sampling_time = DEF_SAMPLING_MS;
@@ -77,13 +80,11 @@ struct ip_cpu_info {
 static DEFINE_PER_CPU(struct ip_cpu_info, ip_info);
 
 static unsigned int screen_off_max = UINT_MAX;
-module_param(screen_off_max, uint, 0664);
+module_param(screen_off_max, uint, 0644);
 
 #define CAPACITY_RESERVE	50
 
-#if defined(CONFIG_ARCH_APQ8084) || defined(CONFIG_ARM64)
-#define THREAD_CAPACITY (430 - CAPACITY_RESERVE)
-#elif defined(CONFIG_ARCH_MSM8960) || defined(CONFIG_ARCH_APQ8064) || \
+#if defined(CONFIG_ARCH_MSM8960) || defined(CONFIG_ARCH_APQ8064) || \
 defined(CONFIG_ARCH_MSM8974)
 #define THREAD_CAPACITY	(339 - CAPACITY_RESERVE)
 #elif defined(CONFIG_ARCH_MSM8226) || defined (CONFIG_ARCH_MSM8926) || \
@@ -110,7 +111,7 @@ static unsigned int nr_run_thresholds_performance[] = {
 	(THREAD_CAPACITY * 380 * MULT_FACTOR) / DIV_FACTOR,
 	(THREAD_CAPACITY * 625 * MULT_FACTOR) / DIV_FACTOR,
 	(THREAD_CAPACITY * 875 * MULT_FACTOR) / DIV_FACTOR,
-	UINT_MAX
+// 	UINT_MAX
 };
 
 static unsigned int nr_run_thresholds_conservative[] = {
@@ -153,10 +154,10 @@ static unsigned int nr_possible_cores;
 module_param(nr_possible_cores, uint, 0444);
 
 static unsigned int cpu_nr_run_threshold = CPU_NR_THRESHOLD;
-module_param(cpu_nr_run_threshold, uint, 0664);
+module_param(cpu_nr_run_threshold, uint, 0644);
 
 static unsigned int nr_run_hysteresis = NR_RUN_HYSTERESIS_QUAD;
-module_param(nr_run_hysteresis, uint, 0664);
+module_param(nr_run_hysteresis, uint, 0644);
 
 static unsigned int nr_run_last;
 
@@ -201,7 +202,7 @@ static unsigned int calculate_thread_stats(void)
 	return nr_run;
 }
 
-static void __ref intelli_plug_boost_fn(struct work_struct *work)
+static void __cpuinit intelli_plug_boost_fn(struct work_struct *work)
 {
 
 	int nr_cpus = num_online_cpus();
@@ -252,7 +253,7 @@ static void unplug_cpu(int min_active_cpu)
 	}
 }
 
-static void __ref intelli_plug_work_fn(struct work_struct *work)
+static void __cpuinit intelli_plug_work_fn(struct work_struct *work)
 {
 	unsigned int nr_run_stat;
 	unsigned int cpu_count = 0;
@@ -277,9 +278,14 @@ static void __ref intelli_plug_work_fn(struct work_struct *work)
 			switch (cpu_count) {
 			case 1:
 				if (persist_count == 0) {
+				  if (int_hotplug == 0) {
+                                    //pr_info("case 1: Hotplug locked \n");
+				break;
+                                    } else if (int_hotplug == 1) {
 					//take down everyone
 					unplug_cpu(0);
-				}
+                                    }
+                                }
 #ifdef DEBUG_INTELLI_PLUG
 				pr_info("case 1: %u\n", persist_count);
 #endif
@@ -290,8 +296,12 @@ static void __ref intelli_plug_work_fn(struct work_struct *work)
 				if (nr_cpus < 2) {
 					for (i = 1; i < cpu_count; i++)
 						cpu_up(i);
-				} else {
-					unplug_cpu(1);
+				} else
+                                    if (int_hotplug == 0) {
+                                        //pr_info("case 1: Hotplug locked \n");
+                                        break;
+                                } else if (int_hotplug == 1) {
+                                    unplug_cpu(1);
 				}
 #ifdef DEBUG_INTELLI_PLUG
 				pr_info("case 2: %u\n", persist_count);
@@ -303,7 +313,12 @@ static void __ref intelli_plug_work_fn(struct work_struct *work)
 				if (nr_cpus < 3) {
 					for (i = 1; i < cpu_count; i++)
 						cpu_up(i);
-				} else {
+				} else
+				 if (int_hotplug == 0) {
+                                        //pr_info("case 1: Hotplug locked \n");
+					break;
+                                }
+				else if (int_hotplug == 1) {
 					unplug_cpu(2);
 				}
 #ifdef DEBUG_INTELLI_PLUG
@@ -347,7 +362,7 @@ static void screen_off_limit(bool on)
 
 	for_each_online_cpu(cpu) {
 		l_ip_info = &per_cpu(ip_info, cpu);
-		policy = cpufreq_cpu_get(0);
+		policy = cpufreq_cpu_get(cpu);
 
 		if (on) {
 			/* save current instance */
@@ -373,64 +388,6 @@ static void screen_off_limit(bool on)
 		cpufreq_update_policy(cpu);
 	}
 }
-
-void __ref intelli_plug_perf_boost(bool on)
-{
-	unsigned int cpu;
-
-	if (intelli_plug_active) {
-		flush_workqueue(intelliplug_wq);
-		if (on) {
-			for_each_possible_cpu(cpu) {
-				if (!cpu_online(cpu))
-					cpu_up(cpu);
-			}
-		} else {
-			queue_delayed_work_on(0, intelliplug_wq,
-				&intelli_plug_work,
-				msecs_to_jiffies(sampling_time));
-		}
-	}
-}
-
-/* sysfs interface for performance boost (BEGIN) */
-static ssize_t intelli_plug_perf_boost_store(struct kobject *kobj,
-			struct kobj_attribute *attr, const char *buf,
-			size_t count)
-{
-
-	int boost_req;
-
-	sscanf(buf, "%du", &boost_req);
-
-	switch(boost_req) {
-		case 0:
-			intelli_plug_perf_boost(0);
-			return count;
-		case 1:
-			intelli_plug_perf_boost(1);
-			return count;
-		default:
-			return -EINVAL;
-	}
-}
-
-static struct kobj_attribute intelli_plug_perf_boost_attribute =
-	__ATTR(perf_boost, 0220,
-		NULL,
-		intelli_plug_perf_boost_store);
-
-static struct attribute *intelli_plug_perf_boost_attrs[] = {
-	&intelli_plug_perf_boost_attribute.attr,
-	NULL,
-};
-
-static struct attribute_group intelli_plug_perf_boost_attr_group = {
-	.attrs = intelli_plug_perf_boost_attrs,
-};
-
-static struct kobject *intelli_plug_perf_boost_kobj;
-/* sysfs interface for performance boost (END) */
 
 #ifdef CONFIG_POWERSUSPEND
 static void intelli_plug_suspend(struct power_suspend *handler)
@@ -463,7 +420,7 @@ static void wakeup_boost(void)
 	struct ip_cpu_info *l_ip_info;
 
 	for_each_online_cpu(cpu) {
-		policy = cpufreq_cpu_get(0);
+		policy = cpufreq_cpu_get(cpu);
 		l_ip_info = &per_cpu(ip_info, 0);
 		policy->cur = l_ip_info->cur_max;
 		cpufreq_update_policy(cpu);
@@ -471,9 +428,9 @@ static void wakeup_boost(void)
 }
 
 #ifdef CONFIG_POWERSUSPEND
-static void __ref intelli_plug_resume(struct power_suspend *handler)
+static void __cpuinit intelli_plug_resume(struct power_suspend *handler)
 #else
-static void __ref intelli_plug_resume(struct early_suspend *handler)
+static void __cpuinit intelli_plug_resume(struct early_suspend *handler)
 #endif
 {
 
@@ -593,6 +550,7 @@ int __init intelli_plug_init(void)
 {
 	int rc;
 #if defined (CONFIG_POWERSUSPEND) || defined(CONFIG_HAS_EARLYSUSPEND)
+	int cpu;
 	struct cpufreq_policy *policy;
 	struct ip_cpu_info *l_ip_info;
 #endif
@@ -612,10 +570,12 @@ int __init intelli_plug_init(void)
 	}
 
 #if defined (CONFIG_POWERSUSPEND) || defined(CONFIG_HAS_EARLYSUSPEND)
-	l_ip_info = &per_cpu(ip_info, 0);
-	policy = cpufreq_cpu_get(0);
-	l_ip_info->sys_max = policy->cpuinfo.max_freq;
-	l_ip_info->cur_max = policy->max;
+	for_each_online_cpu(cpu) {
+		l_ip_info = &per_cpu(ip_info, cpu);
+		policy = cpufreq_cpu_get(cpu);
+		l_ip_info->sys_max = policy->cpuinfo.max_freq;
+		l_ip_info->cur_max = policy->max;
+	}
 #endif
 
 	rc = input_register_handler(&intelli_plug_input_handler);
@@ -633,19 +593,6 @@ int __init intelli_plug_init(void)
 	INIT_DELAYED_WORK(&intelli_plug_boost, intelli_plug_boost_fn);
 	queue_delayed_work_on(0, intelliplug_wq, &intelli_plug_work,
 		msecs_to_jiffies(10));
-
-	intelli_plug_perf_boost_kobj
-		= kobject_create_and_add("intelli_plug", kernel_kobj);
-
-	if (!intelli_plug_perf_boost_kobj) {
-		return -ENOMEM;
-	}
-
-	rc = sysfs_create_group(intelli_plug_perf_boost_kobj,
-				&intelli_plug_perf_boost_attr_group);
-
-	if (rc)
-		kobject_put(intelli_plug_perf_boost_kobj);
 
 	return 0;
 }

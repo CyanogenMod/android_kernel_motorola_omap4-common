@@ -138,7 +138,7 @@ static struct dbs_tuners {
 	.disable_hotplugging = DEF_DISABLE_HOTPLUGGING,
 	.no_2nd_cpu_screen_off = 1,
 	.sampling_down_factor = DEF_SAMPLING_DOWN_FACTOR,
-	.sampling_rate_screen_off = 45000,
+	.sampling_rate_screen_off = 20000,
 	.ignore_nice = 0,
 	.freq_step = 5,
 };

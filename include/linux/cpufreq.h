@@ -378,6 +378,12 @@ extern struct cpufreq_governor cpufreq_gov_interactivex;
 #elif defined(CONFIG_CPU_FREQ_DEFAULT_GOV_KTOONSERVATIVE)
 extern struct cpufreq_governor cpufreq_gov_ktoonservative;
 #define CPUFREQ_DEFAULT_GOVERNOR	(&cpufreq_gov_ktoonservative)
+#elif defined(CONFIG_CPU_FREQ_DEFAULT_GOV_LIONHEART)
+extern struct cpufreq_governor cpufreq_gov_lionheart;
+#define CPUFREQ_DEFAULT_GOVERNOR	(&cpufreq_gov_lionheart)
+#elif defined(CONFIG_CPU_FREQ_DEFAULT_GOV_LIONHEART)
+extern struct cpufreq_governor cpufreq_gov_neox;
+#define CPUFREQ_DEFAULT_GOVERNOR	(&cpufreq_gov_neox)
 #elif defined(CONFIG_CPU_FREQ_DEFAULT_GOV_SMARTASSH3)
 extern struct cpufreq_governor cpufreq_gov_smartassh3;
 #define CPUFREQ_DEFAULT_GOVERNOR	(&cpufreq_gov_smartassh3)

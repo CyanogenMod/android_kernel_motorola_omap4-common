@@ -154,6 +154,12 @@ config CPU_FREQ_DEFAULT_GOV_LIONHEART
 	help
 	 Use the CPUFreq governor 'lionheart' as default.
 
+config CPU_FREQ_DEFAULT_GOV_NEOX
+	bool "NeoX"
+	select CPU_FREQ_GOV_NEOX
+	help
+	 Use the CPUFreq governor 'NeoX' as default.
+
 config CPU_FREQ_DEFAULT_GOV_SMARTASSH3
 	bool "smartassH3"
 	select CPU_FREQ_GOV_SMARTASSH3
@@ -315,7 +321,15 @@ config CPU_FREQ_GOV_LIONHEART
 	 Use the CPUFreq governor 'lionheart' as default.
 
 	  If in doubt, say N.
-  
+
+config CPU_FREQ_GOV_NEOX
+	tristate "'NeoX' cpufreq governor"
+	depends on CPU_FREQ
+	help
+	  'NeoX' - a tweaked "pegasusq" based smart and smooth optimized governor!
+
+	  If in doubt, say N.
+
 config CPU_FREQ_GOV_SMARTASSH3
 	tristate "'SmartassH3' cpufreq governor"
 	depends on CPU_FREQ

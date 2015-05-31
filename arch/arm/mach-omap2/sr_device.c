@@ -68,11 +68,20 @@ static void __init sr_set_nvalues(struct omap_volt_data *volt_data,
 		} else {
 			 v = omap_ctrl_readl(volt_data[i].sr_efuse_offs);
 		}
-
+		
+		if (v == 0 || volt_data[i].nvalue_override > 0) {
+			/*
+			* If v == 0 or nvalue_overide set, check our volt_data for an nvalue override.
+			*/
+			printk(">>> sr_set_nvalues overriding v = %lu with %lu\n", v, volt_data[i].nvalue_override);
+			pr_info(">>> sr_set_nvalues overriding v = %lu with %lu\n", v, volt_data[i].nvalue_override);
+			v = volt_data[i].nvalue_override;
+		}
 		nvalue_table[i].efuse_offs = volt_data[i].sr_efuse_offs;
 		nvalue_table[i].nvalue = v;
+		printk(">>> sr_set_nvalues v = %lu, sr_efuse_offs = %x\n", v, volt_data[i].sr_efuse_offs);
+		pr_info(">>> sr_set_nvalues v = %lu, sr_efuse_offs = %x\n", v, volt_data[i].sr_efuse_offs);
 	}
-
 	sr_data->nvalue_table = nvalue_table;
 	sr_data->nvalue_count = count;
 }

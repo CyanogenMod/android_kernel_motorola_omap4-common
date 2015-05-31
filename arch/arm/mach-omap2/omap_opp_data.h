@@ -75,7 +75,7 @@ struct omap_opp_def {
  * Initialization wrapper used to define SmartReflex process data
  * XXX Is this needed?  Just use C99 initializers in data files?
  */
-#define VOLT_DATA_DEFINE(_v_nom, _v_margin, _efuse_offs, _errminlimit, _errgain, _abb_type) \
+#define VOLT_DATA_DEFINE(_v_nom, _v_margin, _efuse_offs, _errminlimit, _errgain, _abb_type, _nvalue) \
 {								       \
 	.volt_nominal	= _v_nom,				       \
 	.volt_margin	= _v_margin,				       \
@@ -83,6 +83,7 @@ struct omap_opp_def {
 	.sr_errminlimit = _errminlimit,				       \
 	.vp_errgain	= _errgain,				       \
 	.abb_type	= _abb_type,				       \
+	.nvalue_override= _nvalue,				       \
 }
 
 /* Use this to initialize the default table */

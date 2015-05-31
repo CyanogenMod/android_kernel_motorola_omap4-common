@@ -149,6 +149,7 @@ struct omap_voltage_notifier {
  *			usage of ABB; OMAP_ABB_NOMINAL_OPP - which bypasses ABB
  *			LDO; or OMAP_ABB_FAST_OPP, which enables Forward-Body
  *			Bias.
+ * @nvalue_override: 	Used as an override for nvalue pulled from efuse registers
  */
 struct omap_volt_data {
 	u32	volt_nominal;
@@ -159,6 +160,7 @@ struct omap_volt_data {
 	u8	sr_errminlimit;
 	u8	vp_errgain;
 	int	abb_type;
+	u32	nvalue_override;
 };
 
 /*
@@ -182,11 +184,11 @@ struct omap_volt_data {
 #define OMAP3630_VP2_VLIMITTO_VDDMAX	1200000
 
 #define OMAP4_VP_MPU_VLIMITTO_VDDMIN	830000
-#define OMAP4_VP_MPU_VLIMITTO_VDDMAX	1410000
+#define OMAP4_VP_MPU_VLIMITTO_VDDMAX	1440000
 #define OMAP4_VP_IVA_VLIMITTO_VDDMIN	830000
 #define OMAP4_VP_IVA_VLIMITTO_VDDMAX	1260000
 #define OMAP4_VP_CORE_VLIMITTO_VDDMIN	830000
-#define OMAP4_VP_CORE_VLIMITTO_VDDMAX	1200000
+#define OMAP4_VP_CORE_VLIMITTO_VDDMAX	1250000
 
 #define OMAP4_VP_CONFIG_ERROROFFSET	0x00
 #define OMAP4_VP_VSTEPMIN_VSTEPMIN	0x01

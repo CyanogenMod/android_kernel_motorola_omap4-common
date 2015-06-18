@@ -54,6 +54,7 @@
 #define OMAP4430_VDD_MPU_OPPNITROB_UV		1398000		/* 1.2Ghz */
 #define OMAP4430_VDD_MPU_OPPNITROC_UV		1402000		/* 1.3Ghz */
 #define OMAP4430_VDD_MPU_OPPNITROD_UV		1415000		/* 1.4Ghz */
+#define OMAP4430_VDD_MPU_OPPNITROD_ULV		1409000		/* 1.4Ghz */
 #define OMAP4430_VDD_MPU_OPPNITROD_UV_HV	1439000		/* 1.4Ghz HV */
 
 struct omap_volt_data omap443x_vdd_mpu_volt_data[] = {
@@ -92,8 +93,12 @@ struct omap_volt_data omap443x_vdd_mpu_volt_data[] = {
 #ifdef CONFIG_USE_HIGH_VOLTAGE
 	VOLT_DATA_DEFINE(OMAP4430_VDD_MPU_OPPNITROD_UV_HV, 0, OMAP44XX_CONTROL_FUSE_MPU_OPPNITROSB, 0xfa, 0x27, OMAP_ABB_FAST_OPP, 0),
 #else
+#ifdef CONFIG_USE_ULV_VOLTAGE
+        VOLT_DATA_DEFINE(OMAP4430_VDD_MPU_OPPNITROD_ULV, 0, OMAP44XX_CONTROL_FUSE_MPU_OPPNITROSB, 0xfa, 0x27, OMAP_ABB_FAST_OPP, 0),
+#else
 	VOLT_DATA_DEFINE(OMAP4430_VDD_MPU_OPPNITROD_UV, 0, OMAP44XX_CONTROL_FUSE_MPU_OPPNITROSB, 0xfa, 0x27, OMAP_ABB_FAST_OPP, 0),
 #endif
+	#endif
 #endif
 	VOLT_DATA_DEFINE(0, 0, 0, 0, 0, 0, 0),
 };
@@ -163,7 +168,11 @@ static struct omap_vdd_dep_volt omap443x_vdd_mpu_core_dep_data[] = {
 #ifdef CONFIG_USE_HIGH_VOLTAGE
 	{.main_vdd_volt = OMAP4430_VDD_MPU_OPPNITROD_UV_HV, .dep_vdd_volt = OMAP4430_VDD_CORE_OPP100_UV},
 #else
+#ifdef CONFIG_USE_ULV_VOLTAGE
+        {.main_vdd_volt = OMAP4430_VDD_MPU_OPPNITROD_ULV, .dep_vdd_volt = OMAP4430_VDD_CORE_OPP100_UV},
+#else
 	{.main_vdd_volt = OMAP4430_VDD_MPU_OPPNITROD_UV, .dep_vdd_volt = OMAP4430_VDD_CORE_OPP100_UV},
+#endif
 #endif
 #endif
 };
@@ -239,9 +248,13 @@ static struct omap_opp_def __initdata omap443x_opp_def_list[] = {
 #ifdef CONFIG_USE_HIGH_VOLTAGE
 	OPP_INITIALIZER("mpu", "dpll_mpu_ck", "mpu", false, 1400000000, OMAP4430_VDD_MPU_OPPNITROD_UV_HV),
 #else
+#ifdef CONFIG_USE_ULV_VOLTAGE
+        OPP_INITIALIZER("mpu", "dpll_mpu_ck", "mpu", false, 1400000000, OMAP4430_VDD_MPU_OPPNITROD_ULV),
+#else
 	OPP_INITIALIZER("mpu", "dpll_mpu_ck", "mpu", false, 1400000000, OMAP4430_VDD_MPU_OPPNITROD_UV),
 #endif
-	#endif
+#endif
+#endif
 	/* L3 OPP1 - OPP50 */
 	OPP_INITIALIZER("l3_main_1", "virt_l3_ck", "core", true, 100000000, OMAP4430_VDD_CORE_OPP50_UV),
 	/* L3 OPP2 - OPP100, OPP-Turbo, OPP-SB */

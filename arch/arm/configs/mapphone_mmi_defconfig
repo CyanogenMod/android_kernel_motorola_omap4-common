@@ -460,7 +460,7 @@ CONFIG_ARM_FLUSH_CONSOLE_ON_RESTART=y
 CONFIG_USE_OF=y
 CONFIG_ZBOOT_ROM_TEXT=0
 CONFIG_ZBOOT_ROM_BSS=0
-CONFIG_CMDLINE="root=/dev/ram0 rw mem=1023M@0x80000000 console=null vram=10300K omapfb.vram=0:8256K,1:4K,2:2040K init=/init ip=off mmcparts=mmcblk1:p7(pds),p8(utags),p14(boot),p15(recovery),p16(cdrom),p17(misc),p18(cid),p19(kpanic),p20(system),p21(cache),p22(preinstall),p23(webtop),p24(userdata),p25(emstorage) mot_sst=1 androidboot.bootloader=0x0A74 androidboot.selinux=enforcing"
+CONFIG_CMDLINE="root=/dev/ram0 rw mem=1023M@0x80000000 console=null vram=10300K omapfb.vram=0:8256K,1:4K,2:2040K init=/init ip=off mmcparts=mmcblk1:p7(pds),p8(utags),p14(boot),p15(recovery),p16(cdrom),p17(misc),p18(cid),p19(kpanic),p20(system),p21(cache),p22(preinstall),p23(webtop),p24(userdata),p25(emstorage) mot_sst=1 androidboot.bootloader=0x0A74 zcache zcache=lz4 androidboot.selinux=enforcing"
 # CONFIG_CMDLINE_FROM_BOOTLOADER is not set
 # CONFIG_CMDLINE_EXTEND is not set
 CONFIG_CMDLINE_FORCE=y
@@ -2713,7 +2713,11 @@ CONFIG_ANDROID_LOW_MEMORY_KILLER=y
 # CONFIG_IIO is not set
 CONFIG_XVMALLOC=y
 CONFIG_ZRAM=y
+CONFIG_ZRAM_LZ4_COMPRESS=y
 # CONFIG_ZRAM_DEBUG is not set
+CONFIG_ZCACHE=y
+CONFIG_ZSMALLOC=y
+# CONFIG_PGTABLE_MAPPING is not set
 # CONFIG_FB_SM7XX is not set
 # CONFIG_LIRC_STAGING is not set
 # CONFIG_EASYCAP is not set
@@ -3179,7 +3183,9 @@ CONFIG_CRYPTO_TWOFISH_COMMON=y
 #
 CONFIG_CRYPTO_DEFLATE=y
 # CONFIG_CRYPTO_ZLIB is not set
-# CONFIG_CRYPTO_LZO is not set
+CONFIG_CRYPTO_LZO=y
+CONFIG_CRYPTO_LZ4=y
+# CONFIG_CRYPTO_LZ4HC is not set
 
 #
 # Random Number Generation
@@ -3206,6 +3212,8 @@ CONFIG_ZLIB_INFLATE=y
 CONFIG_ZLIB_DEFLATE=y
 CONFIG_LZO_COMPRESS=y
 CONFIG_LZO_DECOMPRESS=y
+CONFIG_LZ4_COMPRESS=y
+CONFIG_LZ4_DECOMPRESS=y
 # CONFIG_XZ_DEC is not set
 # CONFIG_XZ_DEC_BCJ is not set
 CONFIG_DECOMPRESS_GZIP=y

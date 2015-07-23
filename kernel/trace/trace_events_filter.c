@@ -1766,7 +1766,7 @@ static int replace_system_preds(struct event_subsystem *system,
 		 * replace the filter for the call.
 		 */
 		filter = call->filter;
-		rcu_assign_pointer(call->filter, filter_item->filter);
+		call->filter = filter_item->filter;
 		filter_item->filter = filter;
 
 		fail = false;
@@ -1821,7 +1821,7 @@ int apply_event_filter(struct ftrace_event_call *call, char *filter_string)
 		filter = call->filter;
 		if (!filter)
 			goto out_unlock;
-		RCU_INIT_POINTER(call->filter, NULL);
+		call->filter = NULL;
 		/* Make sure the filter is not being used */
 		synchronize_sched();
 		__free_filter(filter);
@@ -1862,7 +1862,7 @@ out:
 	 * string
 	 */
 	tmp = call->filter;
-	rcu_assign_pointer(call->filter, filter);
+	call->filter = filter;
 	if (tmp) {
 		/* Make sure the call is done with the filter */
 		synchronize_sched();

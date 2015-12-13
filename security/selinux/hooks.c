@@ -3227,7 +3227,12 @@ static int selinux_file_mprotect(struct vm_area_struct *vma,
 			 * modified content.  This typically should only
 			 * occur for text relocations.
 			 */
-			rc = file_has_perm(cred, vma->vm_file, FILE__EXECMOD);
+			 /* STARGO: Hack for Moto blobs */
+			if (strcmp(current->comm, "battd") &&
+			    strcmp(current->comm, "msp430") &&
+			    strcmp(current->comm, "thermaldaemon") &&
+			    strcmp(current->comm, "whisperd"))
+				rc = file_has_perm(cred, vma->vm_file, FILE__EXECMOD);
 		}
 		if (rc)
 			return rc;

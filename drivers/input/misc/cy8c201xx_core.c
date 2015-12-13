@@ -1637,9 +1637,12 @@ void *cy201_core_init(struct cy201_bus_ops *bus_ops,
 	input_set_drvdata(input_device, ts);
 	dev_set_drvdata(dev, ts);
 
-	__set_bit(EV_KEY, input_device->evbit);
+	set_bit(EV_KEY, input_device->evbit);
+	set_bit(KEY_BACK, input_device->keybit);
+	set_bit(KEY_MENU, input_device->keybit);
+	set_bit(KEY_SEARCH, input_device->keybit);
+	set_bit(KEY_HOME, input_device->keybit);
 
-	bitmap_fill(input_device->keybit, KEY_MAX);
 	i2c_set[0] = ts->platform_data->addr[0];
 	if (!(ts->platform_data->flags & CY_USE_INTERNAL_PU))
 		i2c_set[0] |= CY_OPEN_DRAIN_BIT;

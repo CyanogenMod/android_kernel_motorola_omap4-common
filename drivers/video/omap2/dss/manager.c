@@ -343,13 +343,12 @@ static ssize_t manager_cpr_coef_show(struct omap_overlay_manager *mgr,
 			info.cpr_coefs.bb);
 }
 
-static int omap_dss_mgr_set_info_nocb(struct omap_overlay_manager *mgr,
-		struct omap_overlay_manager_info *info);
+static int omap_dss_mgr_set_cpr_coefs(struct omap_overlay_manager *mgr,
+		struct omap_dss_cpr_coefs *coefs);
 
 static ssize_t manager_cpr_coef_store(struct omap_overlay_manager *mgr,
 		const char *buf, size_t size)
 {
-	struct omap_overlay_manager_info info;
 	struct omap_dss_cpr_coefs coefs;
 	int r, i;
 	s16 *arr;
@@ -372,11 +371,7 @@ static ssize_t manager_cpr_coef_store(struct omap_overlay_manager *mgr,
 			return -EINVAL;
 	}
 
-	mgr->get_manager_info(mgr, &info);
-
-	info.cpr_coefs = coefs;
-
-	r = omap_dss_mgr_set_info_nocb(mgr, &info);
+	r = omap_dss_mgr_set_cpr_coefs(mgr, &coefs);
 	if (r)
 		return r;
 
@@ -2468,28 +2463,17 @@ static int omap_dss_mgr_set_info(struct omap_overlay_manager *mgr,
 }
 
 /*
- * Don't call the callback with the old_info, just drop it.
- * Only use this when explicitly modifying the old config.
- * TODO: Fix interrupt races
+ * Don't call the callback with the old_info, just drop it,
+ * We only change cpr_coefs here, so nothing of valyue gets
+ * lost (only intermediate previous cpr values).
  */
-static int omap_dss_mgr_set_info_nocb(struct omap_overlay_manager *mgr,
-		struct omap_overlay_manager_info *info)
+static int omap_dss_mgr_set_cpr_coefs(struct omap_overlay_manager *mgr,
+		struct omap_dss_cpr_coefs *coefs)
 {
-	int r;
-	struct omap_overlay_manager_info old_info;
 	unsigned long flags;
 
 	spin_lock_irqsave(&dss_cache.lock, flags);
-	old_info = mgr->info;
-	mgr->info = *info;
-
-	r = dss_check_manager(mgr);
-	if (r) {
-		mgr->info = old_info;
-		spin_unlock_irqrestore(&dss_cache.lock, flags);
-		return r;
-	}
-
+	mgr->info.cpr_coefs = *coefs;
 	mgr->info_dirty = true;
 	spin_unlock_irqrestore(&dss_cache.lock, flags);
 

@@ -343,6 +343,9 @@ static ssize_t manager_cpr_coef_show(struct omap_overlay_manager *mgr,
 			info.cpr_coefs.bb);
 }
 
+static int omap_dss_mgr_set_info_nocb(struct omap_overlay_manager *mgr,
+		struct omap_overlay_manager_info *info);
+
 static ssize_t manager_cpr_coef_store(struct omap_overlay_manager *mgr,
 		const char *buf, size_t size)
 {
@@ -373,11 +376,7 @@ static ssize_t manager_cpr_coef_store(struct omap_overlay_manager *mgr,
 
 	info.cpr_coefs = coefs;
 
-	r = mgr->set_manager_info(mgr, &info);
-	if (r)
-		return r;
-
-	r = mgr->apply(mgr);
+	r = omap_dss_mgr_set_info_nocb(mgr, &info);
 	if (r)
 		return r;
 
@@ -2461,6 +2460,35 @@ static int omap_dss_mgr_set_info(struct omap_overlay_manager *mgr,
 
 	if (mgr->info_dirty)
 		dss_ovl_cb(&old_info.cb, mgr->id, DSS_COMPLETION_ECLIPSED_SET);
+
+	mgr->info_dirty = true;
+	spin_unlock_irqrestore(&dss_cache.lock, flags);
+
+	return 0;
+}
+
+/*
+ * Don't call the callback with the old_info, just drop it.
+ * Only use this when explicitly modifying the old config.
+ * TODO: Fix interrupt races
+ */
+static int omap_dss_mgr_set_info_nocb(struct omap_overlay_manager *mgr,
+		struct omap_overlay_manager_info *info)
+{
+	int r;
+	struct omap_overlay_manager_info old_info;
+	unsigned long flags;
+
+	spin_lock_irqsave(&dss_cache.lock, flags);
+	old_info = mgr->info;
+	mgr->info = *info;
+
+	r = dss_check_manager(mgr);
+	if (r) {
+		mgr->info = old_info;
+		spin_unlock_irqrestore(&dss_cache.lock, flags);
+		return r;
+	}
 
 	mgr->info_dirty = true;
 	spin_unlock_irqrestore(&dss_cache.lock, flags);

@@ -1347,7 +1347,6 @@ void dispc_enable_zorder(enum omap_plane plane, bool enable)
 void dispc_enable_cpr(enum omap_channel channel, bool enable)
 {
 	u16 reg;
-	unsigned long flags;
 
 	if (channel == OMAP_DSS_CHANNEL_LCD)
 		reg = DISPC_CONFIG;
@@ -1356,18 +1355,13 @@ void dispc_enable_cpr(enum omap_channel channel, bool enable)
 	else
 		return;
 
-	spin_lock_irqsave(&dispc.irq_lock, flags);
-
 	REG_FLD_MOD(reg, enable, 15, 15);
-
-	spin_unlock_irqrestore(&dispc.irq_lock, flags);
 }
 
 void dispc_set_cpr_coef(enum omap_channel channel,
 		struct omap_dss_cpr_coefs *coefs)
 {
 	u32 coef_r, coef_g, coef_b;
-	unsigned long flags;
 
 	if (channel != OMAP_DSS_CHANNEL_LCD && channel != OMAP_DSS_CHANNEL_LCD2)
 		return;
@@ -1379,13 +1373,9 @@ void dispc_set_cpr_coef(enum omap_channel channel,
 	coef_b = FLD_VAL(coefs->br, 31, 22) | FLD_VAL(coefs->bg, 20, 11) |
 		FLD_VAL(coefs->bb, 9, 0);
 
-	spin_lock_irqsave(&dispc.irq_lock, flags);
-
 	dispc_write_reg(DISPC_CPR_COEF_R(channel), coef_r);
 	dispc_write_reg(DISPC_CPR_COEF_G(channel), coef_g);
 	dispc_write_reg(DISPC_CPR_COEF_B(channel), coef_b);
-
-	spin_unlock_irqrestore(&dispc.irq_lock, flags);
 }
 
 static void _dispc_set_vid_color_conv(enum omap_plane plane, bool enable)
@@ -3083,13 +3073,7 @@ void dispc_set_loadmode(enum omap_dss_load_mode mode)
 
 void dispc_set_default_color(enum omap_channel channel, u32 color)
 {
-	unsigned long flags;
-
-	spin_lock_irqsave(&dispc.irq_lock, flags);
-
 	dispc_write_reg(DISPC_DEFAULT_COLOR(channel), color);
-
-	spin_unlock_irqrestore(&dispc.irq_lock, flags);
 }
 
 u32 dispc_get_default_color(enum omap_channel channel)
@@ -3109,10 +3093,6 @@ void dispc_set_trans_key(enum omap_channel ch,
 		enum omap_dss_trans_key_type type,
 		u32 trans_key)
 {
-	unsigned long flags;
-
-	spin_lock_irqsave(&dispc.irq_lock, flags);
-
 	if (ch == OMAP_DSS_CHANNEL_LCD)
 		REG_FLD_MOD(DISPC_CONFIG, type, 11, 11);
 	else if (ch == OMAP_DSS_CHANNEL_DIGIT)
@@ -3121,8 +3101,6 @@ void dispc_set_trans_key(enum omap_channel ch,
 		REG_FLD_MOD(DISPC_CONFIG2, type, 11, 11);
 
 	dispc_write_reg(DISPC_TRANS_COLOR(ch), trans_key);
-
-	spin_unlock_irqrestore(&dispc.irq_lock, flags);
 }
 
 void dispc_get_trans_key(enum omap_channel ch,
@@ -3146,36 +3124,23 @@ void dispc_get_trans_key(enum omap_channel ch,
 
 void dispc_enable_trans_key(enum omap_channel ch, bool enable)
 {
-	unsigned long flags;
-
-	spin_lock_irqsave(&dispc.irq_lock, flags);
-
 	if (ch == OMAP_DSS_CHANNEL_LCD)
 		REG_FLD_MOD(DISPC_CONFIG, enable, 10, 10);
 	else if (ch == OMAP_DSS_CHANNEL_DIGIT)
 		REG_FLD_MOD(DISPC_CONFIG, enable, 12, 12);
 	else /* OMAP_DSS_CHANNEL_LCD2 */
 		REG_FLD_MOD(DISPC_CONFIG2, enable, 10, 10);
-
-	spin_unlock_irqrestore(&dispc.irq_lock, flags);
 }
 void dispc_enable_alpha_blending(enum omap_channel ch, bool enable)
 {
-	unsigned long flags;
-
 	if (!dss_has_feature(FEAT_GLOBAL_ALPHA))
 		return;
-
-
-	spin_lock_irqsave(&dispc.irq_lock, flags);
 
 	/* :NOTE: compatibility mode is not supported on LCD2 */
 	if (ch == OMAP_DSS_CHANNEL_LCD)
 		REG_FLD_MOD(DISPC_CONFIG, enable, 18, 18);
 	else if (ch == OMAP_DSS_CHANNEL_DIGIT)
 		REG_FLD_MOD(DISPC_CONFIG, enable, 19, 19);
-
-	spin_unlock_irqrestore(&dispc.irq_lock, flags);
 }
 bool dispc_alpha_blending_enabled(enum omap_channel ch)
 {

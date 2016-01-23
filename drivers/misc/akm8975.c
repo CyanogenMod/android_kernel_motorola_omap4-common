@@ -977,7 +977,7 @@ int akm8975_probe(struct i2c_client *client, const struct i2c_device_id *id)
 
 	akmd_accel[AKM_ACCEL_X] = 0.0f;
 	akmd_accel[AKM_ACCEL_Y] = 0.0f;
-	akmd_accel[AKM_ACCEL_Z] = 0.0f;
+	akmd_accel[AKM_ACCEL_Z] = 720;
 
 	AKMDBG("successfully probed.");
 	return 0;

@@ -68,7 +68,10 @@ lookup_exec_domain(unsigned int personality)
 				goto out;
 	}
 
-#ifdef CONFIG_MODULES
+	// According to https://groups.google.com/forum/#!topic/android-porting/0e5RrrvQ2MU
+	// this is not functional anyhow, and skipping this
+	// gets rid of multiple SELinux 'denied' messages.
+#if defined(CONFIG_MODULES) && !defined(CONFIG_ANDROID)
 	read_unlock(&exec_domains_lock);
 	request_module("personality-%d", pers);
 	read_lock(&exec_domains_lock);

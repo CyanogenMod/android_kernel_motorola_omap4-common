@@ -327,6 +327,26 @@ void hci_setup_sync(struct hci_conn *conn, __u16 handle)
 			hdev->features[4], hdev->features[5],
 			hdev->features[6], hdev->features[7]);
 
+	if (lmp_esco_capable(hdev)) {
+		if ((conn->features[5] & LMP_EDR_ESCO_2M) &&
+				lmp_esco_capable(conn)) {
+			BT_DBG("hci params for 2EV3/S3 nego");
+			conn->pkt_type = 0x038d;
+			cp.max_latency    = cpu_to_le16(0x000a);
+			cp.retrans_effort = 0x01;
+		} else {
+			BT_DBG("hci params for EV3/HV3");
+			conn->pkt_type = 0x03c5;
+			cp.max_latency    = cpu_to_le16(0xffff);
+			cp.retrans_effort = 0xff;
+		}
+
+	} else {
+		BT_DBG("Error case:");
+	}
+
+	BT_DBG("pkt_type modified value = %x", conn->pkt_type);
+
 	cp.tx_bandwidth   = cpu_to_le32(0x00001f40);
 	cp.rx_bandwidth   = cpu_to_le32(0x00001f40);
 	if (conn->hdev->is_wbs) {
@@ -338,26 +358,10 @@ void hci_setup_sync(struct hci_conn *conn, __u16 handle)
 		/* Retransmission Effort */
 		cp.retrans_effort = RE_LINK_QUALITY;
 	} else {
-		if (lmp_esco_capable(hdev)) {
-			if ((conn->features[5] & LMP_EDR_ESCO_2M) &&
-					lmp_esco_capable(conn)) {
-				BT_DBG("hci params for 2EV3/S3 nego");
-				conn->pkt_type = 0x038d;
-				cp.max_latency    = cpu_to_le16(0x000a);
-				cp.retrans_effort = 0x01;
-			} else {
-				BT_DBG("hci params for EV3/HV3");
-				conn->pkt_type = 0x03c5;
-				cp.max_latency    = cpu_to_le16(0xffff);
-				cp.retrans_effort = 0xff;
-			}
-		} else {
-			BT_DBG("Error case:");
-		}
-		BT_DBG("pkt_type modified value = %x", conn->pkt_type);
+		cp.max_latency    = cpu_to_le16(0x000A);
 		cp.pkt_type = cpu_to_le16(conn->pkt_type);
-
 		cp.voice_setting  = cpu_to_le16(hdev->voice_setting);
+		cp.retrans_effort = RE_POWER_CONSUMP;
 	}
 
 	hci_send_cmd(hdev, HCI_OP_SETUP_SYNC_CONN, sizeof(cp), &cp);
@@ -883,18 +887,7 @@ struct hci_conn *hci_connect(struct hci_dev *hdev, int type,
 	if (type == ACL_LINK)
 		return acl;
 
-	/* type of connection already existing can be ESCO or SCO
-	 * so check for both types before creating new */
-
 	sco = hci_conn_hash_lookup_ba(hdev, type, dst);
-
-	if (!sco && type == ESCO_LINK) {
-		sco = hci_conn_hash_lookup_ba(hdev, SCO_LINK, dst);
-	} else if (!sco && type == SCO_LINK) {
-		/* this case can be practically not possible */
-		sco = hci_conn_hash_lookup_ba(hdev, ESCO_LINK, dst);
-	}
-
 	if (!sco) {
 		sco = hci_conn_add(hdev, type, pkt_type, dst);
 		if (!sco) {
@@ -1458,24 +1451,8 @@ int hci_set_auth_info(struct hci_dev *hdev, void __user *arg)
 
 	hci_dev_lock_bh(hdev);
 	conn = hci_conn_hash_lookup_ba(hdev, ACL_LINK, &req.bdaddr);
-	if (conn) {
+	if (conn)
 		conn->auth_type = req.type;
-		switch (conn->auth_type) {
-		case HCI_AT_NO_BONDING:
-			conn->pending_sec_level = BT_SECURITY_LOW;
-			break;
-		case HCI_AT_DEDICATED_BONDING:
-		case HCI_AT_GENERAL_BONDING:
-			conn->pending_sec_level = BT_SECURITY_MEDIUM;
-			break;
-		case HCI_AT_DEDICATED_BONDING_MITM:
-		case HCI_AT_GENERAL_BONDING_MITM:
-			conn->pending_sec_level = BT_SECURITY_HIGH;
-			break;
-		default:
-			break;
-		}
-	}
 	hci_dev_unlock_bh(hdev);
 
 	if (!conn)

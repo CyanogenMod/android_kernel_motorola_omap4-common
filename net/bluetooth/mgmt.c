@@ -424,9 +424,6 @@ static int update_class(struct hci_dev *hdev)
 	if (test_bit(HCI_SERVICE_CACHE, &hdev->flags))
 		return 0;
 
-	if (!test_bit(HCI_UP, &hdev->flags))
-		return -ENETDOWN;
-
 	cod[0] = hdev->minor_class;
 	cod[1] = hdev->major_class;
 	cod[2] = get_service_classes(hdev);
@@ -851,9 +848,6 @@ static int update_eir(struct hci_dev *hdev)
 
 	if (test_bit(HCI_SERVICE_CACHE, &hdev->flags))
 		return 0;
-
-	if (!test_bit(HCI_UP, &hdev->flags))
-		return -ENETDOWN;
 
 	memset(&cp, 0, sizeof(cp));
 
@@ -1767,7 +1761,7 @@ static void pairing_connect_complete_cb(struct hci_conn *conn, u8 status)
 		return;
 	}
 
-	if (status || conn->pending_sec_level < BT_SECURITY_MEDIUM)
+	if (status)
 		pairing_complete(cmd, status);
 
 	hci_conn_put(conn);
@@ -2313,7 +2307,8 @@ static int start_discovery(struct sock *sk, u16 index)
 		struct hci_cp_le_set_scan_parameters le_cp;
 
 		/* Shorten BR scan params */
-		cp.num_rsp = 0;
+		cp.num_rsp = 1;
+		cp.length /= 2;
 
 		/* Setup LE scan params */
 		memset(&le_cp, 0, sizeof(le_cp));
@@ -2379,11 +2374,6 @@ static int stop_discovery(struct sock *sk, u16 index)
 	del_timer(&hdev->disco_le_timer);
 	del_timer(&hdev->disco_timer);
 
-	if (!test_bit(HCI_UP, &hdev->flags)) {
-		err = -ENETDOWN;
-		goto unlock;
-	}
-
 	if (state == SCAN_LE) {
 		err = hci_send_cmd(hdev, HCI_OP_LE_SET_SCAN_ENABLE,
 							sizeof(le_cp), &le_cp);
@@ -2404,7 +2394,7 @@ static int stop_discovery(struct sock *sk, u16 index)
 		mgmt_pending_remove(cmd);
 
 	mgmt_event(MGMT_EV_DISCOVERING, index, &mode_cp, sizeof(mode_cp), NULL);
-unlock:
+
 	hci_dev_unlock_bh(hdev);
 	hci_dev_put(hdev);
 

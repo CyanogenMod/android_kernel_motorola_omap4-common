@@ -178,9 +178,6 @@ struct hidp_session {
 	/* Report Reference descriptor */
 	struct reference_desc *rrd_data;
 	uint rrd_cnt;
-
-	unsigned char *datc_accum_buf;
-	size_t datc_accum_len;
 };
 
 static inline void hidp_schedule(struct hidp_session *session)

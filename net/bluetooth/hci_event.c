@@ -1059,6 +1059,7 @@ static inline void hci_cs_inquiry(struct hci_dev *hdev, __u8 status)
 
 	if (status) {
 		hci_req_complete(hdev, HCI_OP_INQUIRY, status);
+
 		hci_conn_check_pending(hdev);
 	} else {
 		set_bit(HCI_INQUIRY, &hdev->flags);
@@ -1588,13 +1589,13 @@ static inline void hci_inquiry_complete_evt(struct hci_dev *hdev, struct sk_buff
 	BT_DBG("%s status %d", hdev->name, status);
 
 	if (!lmp_le_capable(hdev))
-		clear_bit(HCI_INQUIRY, &hdev->flags);	
+		clear_bit(HCI_INQUIRY, &hdev->flags);
 
 	hci_req_complete(hdev, HCI_OP_INQUIRY, status);
 	hci_dev_lock(hdev);
 
 	if (test_bit(HCI_MGMT, &hdev->flags))
-                mgmt_inquiry_complete_evt(hdev->id, status);
+		mgmt_inquiry_complete_evt(hdev->id, status);
 	hci_dev_unlock(hdev);
 
 	if (!lmp_le_capable(hdev))
@@ -1912,29 +1913,11 @@ static inline void hci_auth_complete_evt(struct hci_dev *hdev, struct sk_buff *s
 
 		if (test_bit(HCI_CONN_ENCRYPT_PEND, &conn->pend)) {
 			if (!ev->status) {
-				if (conn->link_mode & HCI_LM_ENCRYPT) {
-					/* Encryption implies authentication */
-					conn->link_mode |= HCI_LM_AUTH;
-					conn->link_mode |= HCI_LM_ENCRYPT;
-					conn->sec_level =
-						conn->pending_sec_level;
-					clear_bit(HCI_CONN_ENCRYPT_PEND,
-							&conn->pend);
-					hci_encrypt_cfm(conn, ev->status, 1);
-
-					if (test_bit(HCI_MGMT, &hdev->flags))
-						mgmt_encrypt_change(hdev->id,
-							&conn->dst,
-							ev->status);
-
-				} else {
-					struct hci_cp_set_conn_encrypt cp;
-					cp.handle  = ev->handle;
-					cp.encrypt = 0x01;
-					hci_send_cmd(hdev,
-						HCI_OP_SET_CONN_ENCRYPT,
-						sizeof(cp), &cp);
-				}
+				struct hci_cp_set_conn_encrypt cp;
+				cp.handle  = ev->handle;
+				cp.encrypt = 0x01;
+				hci_send_cmd(hdev, HCI_OP_SET_CONN_ENCRYPT,
+							sizeof(cp), &cp);
 			} else {
 				clear_bit(HCI_CONN_ENCRYPT_PEND, &conn->pend);
 				hci_encrypt_cfm(conn, ev->status, 0x00);
@@ -2746,7 +2729,6 @@ static inline void hci_link_key_notify_evt(struct hci_dev *hdev, struct sk_buff 
 		conn->key_type = ev->key_type;
 		hci_disconnect_amp(conn, 0x06);
 
-		conn->link_mode &= ~HCI_LM_ENCRYPT;
 		pin_len = conn->pin_length;
 		hci_conn_put(conn);
 		hci_conn_enter_active_mode(conn, 0);
@@ -2953,7 +2935,7 @@ static inline void hci_sync_conn_complete_evt(struct hci_dev *hdev, struct sk_bu
 		hci_conn_hold_device(conn);
 		hci_conn_add_sysfs(conn);
 		break;
-	case 0x10:	/* Connection Accept Timeout Exceeded */
+
 	case 0x11:	/* Unsupported Feature or Parameter Value */
 	case 0x1c:	/* SCO interval rejected */
 	case 0x1a:	/* Unsupported Remote Feature */
@@ -2983,6 +2965,7 @@ static inline void hci_sync_conn_complete_evt(struct hci_dev *hdev, struct sk_bu
 			hci_send_cmd(conn->hdev,
 				HCI_OP_SETUP_SYNC_CONN, sizeof(cp), &cp);
 
+			hci_setup_sync(conn, conn->link->handle);
 			goto unlock;
 		}
 		/* fall through */
@@ -3187,8 +3170,7 @@ static inline void hci_simple_pair_complete_evt(struct hci_dev *hdev, struct sk_
 	 * initiated the authentication. A traditional auth_complete
 	 * event gets always produced as initiator and is also mapped to
 	 * the mgmt_auth_failed event */
-	if (!test_bit(HCI_CONN_AUTH_PEND, &conn->pend) && ev->status != 0
-						&& conn->ssp_mode > 0)
+	if (!test_bit(HCI_CONN_AUTH_PEND, &conn->pend) && ev->status != 0)
 		mgmt_auth_failed(hdev->id, &conn->dst, ev->status);
 
 	hci_conn_put(conn);

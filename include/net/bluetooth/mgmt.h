@@ -172,7 +172,6 @@ struct mgmt_cp_set_io_capability {
 struct mgmt_cp_pair_device {
 	bdaddr_t bdaddr;
 	__u8 io_cap;
-	__u8 ssp_cap;
 } __packed;
 struct mgmt_rp_pair_device {
 	bdaddr_t bdaddr;
@@ -407,16 +406,16 @@ struct mgmt_ev_remote_features {
 	uint8_t features[8];
 } __packed;
 
+#define MGMT_EV_RSSI_UPDATE		0x0020
+struct mgmt_ev_rssi_update {
+	bdaddr_t	bdaddr;
+	__s8			rssi;
+} __packed;
+
 #define MGMT_EV_LE_CONN_PARAMS		0xF000
 struct mgmt_ev_le_conn_params {
 	bdaddr_t bdaddr;
 	__u16 interval;
 	__u16 latency;
 	__u16 timeout;
-} __packed;
-
-#define MGMT_EV_RSSI_UPDATE		0x0020
-struct mgmt_ev_rssi_update {
-	bdaddr_t	bdaddr;
-	__s8			rssi;
 } __packed;

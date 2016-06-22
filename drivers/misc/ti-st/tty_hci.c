@@ -264,7 +264,7 @@ int hci_tty_release(struct inode *inod, struct file *file)
 ssize_t hci_tty_read(struct file *file, char __user *data, size_t size,
 		loff_t *offset)
 {
-	int len = 0, tout;
+	int len = 0;
 	struct sk_buff *skb = NULL, *rskb = NULL;
 	struct ti_st	*hst;
 
@@ -272,23 +272,27 @@ ssize_t hci_tty_read(struct file *file, char __user *data, size_t size,
 			__func__, file, data, size, offset);
 
 	/* Validate input parameters */
-	if ((NULL == file) || (((NULL == data) || (0 == size)))) {
+	if ((NULL == file) || (((NULL == data)))) {
 		pr_err("Invalid input params passed to %s", __func__);
 		return -EINVAL;
 	}
 
 	hst = file->private_data;
 
-	/* cannot come here if poll-ed before reading
-	 * if not poll-ed wait on the same wait_q
+	if ((file->f_flags & O_NONBLOCK) && skb_queue_empty(&hst->rx_list)) {
+		return -EAGAIN;
+	}
+
+	/* blocking read() or data available
 	 */
-	tout = wait_event_interruptible_timeout(hst->data_q,
-			!skb_queue_empty(&hst->rx_list),
-				msecs_to_jiffies(1000));
-	/* Check for timed out condition */
-	if (0 == tout) {
-		pr_err("Device Read timed out\n");
-		return -ETIMEDOUT;
+	if (wait_event_interruptible(hst->data_q,
+			!skb_queue_empty(&hst->rx_list))) {
+		pr_err("Device Read failed\n");
+		return -ERESTARTSYS;
+	}
+
+	if (0 == size) {
+		return 0;
 	}
 
 	/* hst->rx_list not empty skb already present */
@@ -460,7 +464,7 @@ static unsigned int hci_tty_poll(struct file *file, poll_table *wait)
 
 	if (!skb_queue_empty(&hst->rx_list)) {
 		pr_debug("rx list que !empty\n");
-		mask |= POLLIN;	/* TODO: check app for mask */
+		mask |= POLLIN | POLLRDNORM;	/* TODO: check app for mask */
 	}
 
 	return mask;

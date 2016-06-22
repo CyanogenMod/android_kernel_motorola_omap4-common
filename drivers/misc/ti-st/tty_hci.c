@@ -271,6 +271,10 @@ ssize_t hci_tty_read(struct file *file, char __user *data, size_t size,
 	pr_debug("inside %s (%p, %p, %u, %p)\n",
 			__func__, file, data, size, offset);
 
+	if (0 == size) {
+		return 0;
+	}
+
 	/* Validate input parameters */
 	if ((NULL == file) || (((NULL == data) || (0 == size)))) {
 		pr_err("Invalid input params passed to %s", __func__);

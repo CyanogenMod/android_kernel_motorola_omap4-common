@@ -718,6 +718,7 @@ const char * const vmstat_text[] = {
 	"numa_other",
 #endif
 	"nr_anon_transparent_hugepages",
+	"nr_swapcache",
 	"nr_dirty_threshold",
 	"nr_dirty_background_threshold",
 
@@ -763,7 +764,7 @@ const char * const vmstat_text[] = {
 	"compact_stall",
 	"compact_fail",
 	"compact_success",
-	"compact_retry_success",
+  "compact_retry_success",
 #endif
 
 #ifdef CONFIG_HUGETLB_PAGE

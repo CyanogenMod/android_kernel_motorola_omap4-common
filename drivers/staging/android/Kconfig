@@ -90,6 +90,28 @@ config ANDROID_LOW_MEMORY_KILLER
 	---help---
 	  Register processes to be killed when memory is low
 
+config ANDROID_LOW_MEMORY_KILLER_AUTODETECT_OOM_ADJ_VALUES
+	bool "Android Low Memory Killer: detect oom_adj values"
+	depends on ANDROID_LOW_MEMORY_KILLER
+	default Y
+	---help---
+	  Detect oom_adj values written to
+	  /sys/module/lowmemorykiller/parameters/adj and convert them
+	  to oom_score_adj values.
+
+config ANDROID_LMK_PARAM_AUTO_TUNE
+	bool "Android Low Memory Killer: auto-tune zone parameters"
+	depends on ANDROID_LOW_MEMORY_KILLER
+	default Y
+	---help---
+	  There are cases that LMK doesn't run, even when it must run.
+	  It is due to LMK shrinker not considering memory status per zone.
+	  So add LMK parameters(other_free, other_file) tunnig code to
+	  consider target zone of LMK shrinker and adjust "minfree_size" 
+	  proptionally to the zone size.
+	  
+	  This also introduces a new module parameter: lmk_fast_run (Default: 1)
+
 endif # if ANDROID
 
 endmenu
